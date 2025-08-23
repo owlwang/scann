@@ -19,6 +19,7 @@ import enum
 from typing import Optional
 
 
+## 工厂装饰器，用于包装生成ScaNN配置片段的函数
 def _factory_decorator(key):
   """Wraps a function that produces a portion of the ScaNN config proto."""
 
@@ -38,21 +39,25 @@ def _factory_decorator(key):
   return func_taker
 
 
+## 重排序类型枚举
 class ReorderType(enum.Enum):
   FLOAT32 = 1
   INT8 = 2
   BFLOAT16 = 3
 
 
+## 增量训练模式枚举
 class IncrementalMode(enum.Enum):
   NONE = 1
   ONLINE = 2
   ONLINE_INCREMENTAL = 3
 
 
+## ScaNN搜索器构建器，支持多种配置组合
 class ScannBuilder(object):
   """Builder class."""
 
+  # 初始化构建器，保存数据集、邻居数、距离度量等
   def __init__(self, db, num_neighbors, distance_measure):
     self.params = {}
     self.training_threads = 0
@@ -61,10 +66,12 @@ class ScannBuilder(object):
     self.num_neighbors = num_neighbors
     self.distance_measure = distance_measure
 
+  # 设置训练线程数
   def set_n_training_threads(self, threads):
     self.training_threads = threads
     return self
 
+  # 设置builder_lambda，build时调用生成ScaNN搜索器
   def set_builder_lambda(self, builder_lambda):
     """Sets builder_lambda, which creates a ScaNN searcher upon calling build().
 
@@ -80,6 +87,7 @@ class ScannBuilder(object):
     return self
 
   @_factory_decorator("pca")
+  # 配置PCA降维参数
   def pca(
       self,
       reduction_dim = None,
@@ -107,6 +115,7 @@ class ScannBuilder(object):
       }}"""
 
   @_factory_decorator("truncate")
+  # 配置截断降维参数，常用于MRL嵌入
   def truncate(self, reduction_dim):
     """Configure truncation of the input dimension, useful in MRL embeddings."""
     dim = self.db.shape[1]
@@ -120,6 +129,7 @@ class ScannBuilder(object):
       }}"""
 
   @_factory_decorator("upper_tree")
+  # 配置额外树层（需先调用tree），用于分层索引
   def upper_tree(
       self,
       num_leaves,
@@ -151,6 +161,7 @@ class ScannBuilder(object):
     """
 
   @_factory_decorator("tree")
+  # 配置分区树参数，支持多种分区和增量训练
   def tree(
       self,
       num_leaves,
@@ -227,6 +238,7 @@ class ScannBuilder(object):
     """
 
   @_factory_decorator("score_ah")
+  # 配置非对称哈希（AH）参数，必须调用本方法或score_brute_force
   def score_ah(
       self,
       dimensions_per_block,
@@ -307,6 +319,7 @@ class ScannBuilder(object):
       }} """
 
   @_factory_decorator("score_bf")
+  # 配置暴力搜索参数，支持量化选项
   def score_brute_force(self, quantize=ReorderType.FLOAT32):
     # Backwards-compatibility shims for when quantize was a bool parameter.
     if quantize is True:  # pylint: disable=g-bool-id-comparison
@@ -322,6 +335,7 @@ class ScannBuilder(object):
     """
 
   @_factory_decorator("reorder")
+  # 配置重排序参数，提升AH召回后精度
   def reorder(
       self,
       reordering_num_neighbors,
@@ -345,6 +359,7 @@ class ScannBuilder(object):
     """
 
   @_factory_decorator("autopilot")
+  # 配置自动驾驶（autopilot）参数
   def autopilot(self, mode=IncrementalMode.NONE, quantize=ReorderType.FLOAT32):
     """Configure autopilot."""
     mode_string = {
@@ -366,6 +381,7 @@ class ScannBuilder(object):
     }}
   """
 
+  # 生成ScaNN配置文本，整合所有已设置参数
   def create_config(self):
     """Returns a text ScaNN config matching the specification in self.params."""
     allowed_measures = {
@@ -425,6 +441,7 @@ class ScannBuilder(object):
       config += self.reorder.proto_maker(self, **reorder_params)
     return config
 
+  # 调用builder_lambda生成ScaNN搜索器实例
   def build(self, docids=None, **kwargs):
     """Calls builder_lambda to return a ScaNN searcher with the built config.
 

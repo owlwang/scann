@@ -19,6 +19,7 @@
 namespace tensorflow {
 namespace addons {
 
+// 注册 ScaNN 创建搜索器算子，输入为数据、配置和线程数，输出为资源句柄
 REGISTER_OP("Scann>ScannCreateSearcher")
     .Input("x: float32")
     .Input("scann_config: string")
@@ -29,6 +30,7 @@ REGISTER_OP("Scann>ScannCreateSearcher")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
+// 注册 ScaNN 搜索算子，输入为句柄、查询、邻居数等，输出为索引和距离
 REGISTER_OP("Scann>ScannSearch")
     .Input("scann_handle: resource")
     .Input("queries: float32")
@@ -38,6 +40,7 @@ REGISTER_OP("Scann>ScannSearch")
     .Output("index: int32")
     .Output("distance: float32")
     .SetShapeFn(shape_inference::UnknownShape);
+// 注册批量搜索算子，支持并行，输出为批量索引和距离
 REGISTER_OP("Scann>ScannSearchBatched")
     .Input("scann_handle: resource")
     .Input("queries: float32")
@@ -49,6 +52,7 @@ REGISTER_OP("Scann>ScannSearchBatched")
     .Output("distances: float32")
     .SetShapeFn(shape_inference::UnknownShape);
 
+// 注册 ScaNN 资源转张量算子，输出所有内部结构
 REGISTER_OP("Scann>ScannToTensors")
     .Input("scann_handle: resource")
     .Output("scann_config: string")
@@ -65,6 +69,7 @@ REGISTER_OP("Scann>ScannToTensors")
 
     .Output("dataset: float");
 
+// 注册张量转 ScaNN 资源算子，输入所有内部结构，输出资源句柄
 REGISTER_OP("Scann>TensorsToScann")
     .Input("x: float32")
     .Input("scann_config: string")
@@ -84,5 +89,7 @@ REGISTER_OP("Scann>TensorsToScann")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
+// tensorflow::addons 命名空间结束
 }  // namespace addons
+// tensorflow 命名空间结束
 }  // namespace tensorflow

@@ -50,6 +50,7 @@
 namespace research_scann {
 namespace asymmetric_hashing2 {
 
+// 查找表结构体，支持 float/int16/int8 三种类型，包含序列化接口
 struct LookupTable {
   bool empty() const {
     return float_lookup_table.empty() && int16_lookup_table.empty() &&
@@ -68,6 +69,7 @@ struct LookupTable {
   static absl::StatusOr<LookupTable> FromBytes(absl::Span<const uint8_t> bytes);
 };
 
+// 打包后的哈希数据集结构体，便于高效存储与访问
 struct PackedDataset {
   std::vector<uint8_t> bit_packed_data = {};
 
@@ -78,6 +80,7 @@ struct PackedDataset {
 
 PackedDataset CreatePackedDataset(const DenseDataset<uint8_t>& hashed_database);
 
+// PackedDataset 的只读视图结构体
 struct PackedDatasetView {
   ConstSpan<uint8_t> bit_packed_data = {};
 
@@ -86,6 +89,7 @@ struct PackedDatasetView {
   DimensionIndex num_blocks = 0;
 };
 
+// PackedDataset 的可变视图结构体
 struct PackedDatasetMutableView {
   MutableSpan<uint8_t> bit_packed_data = {};
 
@@ -94,17 +98,22 @@ struct PackedDatasetMutableView {
   DimensionIndex num_blocks = 0;
 };
 
+// 解包 PackedDatasetView 为普通哈希数据集
 DenseDataset<uint8_t> UnpackDataset(const PackedDatasetView& packed);
 
+// 创建 PackedDatasetView 视图，便于只读访问
 PackedDatasetView CreatePackedDatasetView(const PackedDataset& packed_dataset);
 
+// 设置 LUT16 哈希码到打包数据集
 template <typename Dataset>
 Status SetLUT16Hash(const DatapointPtr<uint8_t>& hashed, size_t index,
                     Dataset* __restrict__ packed_struct);
 
+// 从打包数据集获取 LUT16 哈希码
 template <typename Dataset>
 Datapoint<uint8_t> GetLUT16Hash(size_t index, const Dataset& packed_dataset);
 
+// Queryer 查询选项结构体，包含哈希数据集、LUT16打包视图、后处理仿函数
 template <typename PostprocessFunctor =
               asymmetric_hashing_internal::IdentityPostprocessFunctor,
           typename DatasetView = DefaultDenseDatasetView<uint8_t>>
@@ -118,6 +127,7 @@ struct QueryerOptions {
 
 namespace ai = ::research_scann::asymmetric_hashing_internal;
 
+// Queryer 基类，定义主要近邻搜索接口和辅助算法
 class AsymmetricQueryerBase {
  public:
   using IdentityPostprocessFunctor =
@@ -188,6 +198,7 @@ class AsymmetricQueryerBase {
   friend class AsymmetricQueryer;
 };
 
+// Queryer 模板类，支持不同数据类型的查找表和模型
 template <typename T>
 class AsymmetricQueryer : public AsymmetricQueryerBase {
  public:
@@ -247,7 +258,7 @@ class AsymmetricQueryer : public AsymmetricQueryerBase {
 };
 
 template <typename T>
-inline ConstSpan<T> GetRawLookupTable(const LookupTable& lookup_table) {
+  // 获取查找表的原始数据指针，类型不匹配时报错
   LOG(FATAL) << "INVALID TYPE";
 }
 
@@ -269,12 +280,13 @@ inline ConstSpan<uint16_t> GetRawLookupTable<uint16_t>(
   return ConstSpan<uint16_t>(lookup_table.int16_lookup_table);
 }
 
+// 创建查找表，支持 float/int8/int16 三种类型，支持定点量化
 template <typename T>
 template <typename LookupElement>
 StatusOr<LookupTable> AsymmetricQueryer<T>::CreateLookupTable(
-    const DatapointPtr<T>& query, const DistanceMeasure& lookup_distance,
-    AsymmetricHasherConfig::FixedPointLUTConversionOptions
-        float_int_conversion_options) const {
+  const DatapointPtr<T>& query, const DistanceMeasure& lookup_distance,
+  AsymmetricHasherConfig::FixedPointLUTConversionOptions
+    float_int_conversion_options) const {
   const DatapointPtr<T> query_no_bias = [&] {
     if (quantization_scheme() == AsymmetricHasherConfig::PRODUCT_AND_BIAS) {
       return MakeDatapointPtr(query.indices(), query.values(),
@@ -317,9 +329,10 @@ StatusOr<LookupTable> AsymmetricQueryer<T>::CreateLookupTable(
 }
 
 template <typename TopN, typename Functor, typename DatasetView>
+// 近似最近邻查找主接口，支持多种查找表类型和数据集
 Status AsymmetricQueryerBase::FindApproximateNeighbors(
-    const LookupTable& lookup_table, const SearchParameters& params,
-    QueryerOptions<Functor, DatasetView> querying_options, TopN* top_n) {
+  const LookupTable& lookup_table, const SearchParameters& params,
+  QueryerOptions<Functor, DatasetView> querying_options, TopN* top_n) {
   DCHECK(top_n);
   static_assert(std::is_same_v<float, decltype(top_n->approx_bottom().second)>,
                 "The distance type for TopN must be float for "
@@ -382,14 +395,16 @@ Status AsymmetricQueryerBase::FindApproximateNeighbors(
   return OkStatus();
 }
 
+// asymmetric_hashing2_internal 命名空间，包含批量查找等辅助算法
 namespace asymmetric_hashing2_internal {
 
+// 批量查找最近邻，使用 FastTopNeighbors 优化
 template <size_t kNumQueries>
 Status FindApproxNeighborsFastTopNeighbors(
-    array<const LookupTable*, kNumQueries> lookup_tables,
-    array<const SearchParameters*, kNumQueries> params,
-    const PackedDatasetView& packed_dataset,
-    array<TopNeighbors<float>*, kNumQueries> top_ns) {
+  array<const LookupTable*, kNumQueries> lookup_tables,
+  array<const SearchParameters*, kNumQueries> params,
+  const PackedDatasetView& packed_dataset,
+  array<TopNeighbors<float>*, kNumQueries> top_ns) {
   array<FastTopNeighbors<int16_t>, kNumQueries> ftns;
   array<FastTopNeighbors<int16_t>*, kNumQueries> ftn_ptrs;
   array<const uint8_t*, kNumQueries> raw_luts;
@@ -450,11 +465,12 @@ Status FindApproxNeighborsFastTopNeighbors(
 
 template <size_t kNumQueries, typename TopN, typename Functor,
           typename DatasetView>
+// 批量近似最近邻查找主接口，支持 LUT16 优化和多种查找表类型
 Status AsymmetricQueryerBase::FindApproximateNeighborsBatched(
-    array<const LookupTable*, kNumQueries> lookup_tables,
-    array<const SearchParameters*, kNumQueries> params,
-    QueryerOptions<Functor, DatasetView> querying_options,
-    array<TopN*, kNumQueries> top_ns) {
+  array<const LookupTable*, kNumQueries> lookup_tables,
+  array<const SearchParameters*, kNumQueries> params,
+  QueryerOptions<Functor, DatasetView> querying_options,
+  array<TopN*, kNumQueries> top_ns) {
   static_assert(kNumQueries <= 9,
                 "Only batch sizes up to 9 are supported in "
                 "FindApproximateNeighborsBatched.");
@@ -593,9 +609,10 @@ void MoveOrOverwriteFromClone(TopN0* dst, TopN1* src,
 
 template <typename LookupElement, typename TopN, typename Functor,
           typename DatasetView>
+// 不使用 LUT16 的近似最近邻查找实现
 Status AsymmetricQueryerBase::FindApproximateNeighborsNoLUT16(
-    const LookupTable& lookup_table, const SearchParameters& params,
-    QueryerOptions<Functor, DatasetView> querying_options, TopN* top_n) {
+  const LookupTable& lookup_table, const SearchParameters& params,
+  QueryerOptions<Functor, DatasetView> querying_options, TopN* top_n) {
   const DatasetView* __restrict__ hashed_dataset =
       querying_options.hashed_dataset.get();
   const ConstSpan<LookupElement> lookup_raw =
@@ -669,11 +686,12 @@ Status AsymmetricQueryerBase::FindApproximateNeighborsNoLUT16(
 
 template <typename LookupElement, typename MaxDist, typename TopN,
           typename Functor, typename DatasetView>
+// 不使用 LUT16 的近似最近邻查找底层实现
 Status AsymmetricQueryerBase::FindApproximateNeighborsNoLUT16Impl(
-    const DatasetView* __restrict__ hashed_dataset,
-    DimensionIndex num_clusters_per_block, ConstSpan<LookupElement> lookup_raw,
-    MaxDist max_dist, const RestrictAllowlist* whitelist_or_null,
-    Functor postprocess, TopN* top_n) {
+  const DatasetView* __restrict__ hashed_dataset,
+  DimensionIndex num_clusters_per_block, ConstSpan<LookupElement> lookup_raw,
+  MaxDist max_dist, const RestrictAllowlist* whitelist_or_null,
+  Functor postprocess, TopN* top_n) {
   using TopNFunctor = ai::AddPostprocessedValueToTopN<TopN, MaxDist, Functor>;
   TopNFunctor top_n_functor(top_n, max_dist, postprocess);
   if (!whitelist_or_null) {
@@ -689,9 +707,10 @@ Status AsymmetricQueryerBase::FindApproximateNeighborsNoLUT16Impl(
 }
 
 template <typename TopN, typename Functor, typename DatasetView>
+// 强制使用 LUT16 的近似最近邻查找实现
 Status AsymmetricQueryerBase::FindApproximateNeighborsForceLUT16(
-    const LookupTable& lookup_table, const SearchParameters& params,
-    QueryerOptions<Functor, DatasetView> querying_options, TopN* top_n) {
+  const LookupTable& lookup_table, const SearchParameters& params,
+  QueryerOptions<Functor, DatasetView> querying_options, TopN* top_n) {
   DCHECK(!lookup_table.int8_lookup_table.empty());
   DCHECK(querying_options.lut16_packed_dataset.has_value());
   auto& packed_dataset = *querying_options.lut16_packed_dataset;
@@ -757,10 +776,11 @@ Status AsymmetricQueryerBase::FindApproximateNeighborsForceLUT16(
 }
 
 template <typename Functor, typename DatasetView>
+// 填充所有点的查找距离，支持多种查找表类型
 Status AsymmetricQueryerBase::PopulateDistances(
-    const LookupTable& lookup_table,
-    const QueryerOptions<Functor, DatasetView>& querying_options,
-    MutableSpan<pair<DatapointIndex, float>> results) {
+  const LookupTable& lookup_table,
+  const QueryerOptions<Functor, DatasetView>& querying_options,
+  MutableSpan<pair<DatapointIndex, float>> results) {
   if (static_cast<int>(lookup_table.float_lookup_table.empty()) +
           static_cast<int>(lookup_table.int16_lookup_table.empty()) +
           static_cast<int>(lookup_table.int8_lookup_table.empty()) !=
@@ -779,10 +799,11 @@ Status AsymmetricQueryerBase::PopulateDistances(
 }
 
 template <typename LookupElement, typename Functor, typename DatasetView>
+// 填充所有点的查找距离底层实现
 Status AsymmetricQueryerBase::PopulateDistancesImpl(
-    const LookupTable& lookup_table,
-    const QueryerOptions<Functor, DatasetView>& querying_options,
-    MutableSpan<pair<DatapointIndex, float>> results) {
+  const LookupTable& lookup_table,
+  const QueryerOptions<Functor, DatasetView>& querying_options,
+  MutableSpan<pair<DatapointIndex, float>> results) {
   const ConstSpan<LookupElement> lookup_raw =
       GetRawLookupTable<LookupElement>(lookup_table);
   const DatasetView* __restrict__ hashed_dataset =
@@ -851,19 +872,23 @@ Status AsymmetricQueryerBase::PopulateDistancesImpl(
   return OkStatus();
 }
 
+// LUT16 哈希相关模板显式实例化声明
 extern template Status SetLUT16Hash<PackedDataset>(
-    const DatapointPtr<uint8_t>& hashed, size_t index,
-    PackedDataset* __restrict__ packed_struct);
+  const DatapointPtr<uint8_t>& hashed, size_t index,
+  PackedDataset* __restrict__ packed_struct);
 extern template Status SetLUT16Hash<PackedDatasetMutableView>(
-    const DatapointPtr<uint8_t>& hashed, size_t index,
-    PackedDatasetMutableView* __restrict__ packed_struct);
+  const DatapointPtr<uint8_t>& hashed, size_t index,
+  PackedDatasetMutableView* __restrict__ packed_struct);
 extern template Datapoint<uint8_t> GetLUT16Hash<PackedDataset>(
-    size_t index, const PackedDataset& packed_dataset);
+  size_t index, const PackedDataset& packed_dataset);
 extern template Datapoint<uint8_t> GetLUT16Hash<PackedDatasetMutableView>(
-    size_t index, const PackedDatasetMutableView& packed_dataset);
+  size_t index, const PackedDatasetMutableView& packed_dataset);
+// AsymmetricQueryer 模板类显式实例化声明
 SCANN_INSTANTIATE_TYPED_CLASS(extern, AsymmetricQueryer);
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann
 
 #endif

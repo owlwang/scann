@@ -25,6 +25,9 @@
 
 namespace research_scann {
 
+// TreeXHybrid 工厂函数模板
+// 用于根据配置和数据集创建 UntypedSingleMachineSearcherBase 派生对象
+// leaf_factory 为叶节点的具体工厂实现，opts 为工厂选项
 template <typename T>
 StatusOrPtr<UntypedSingleMachineSearcherBase> TreeXHybridFactory(
     const ScannConfig& config, const shared_ptr<TypedDataset<T>>& dataset,
@@ -35,6 +38,7 @@ StatusOrPtr<UntypedSingleMachineSearcherBase> TreeXHybridFactory(
         leaf_factory,
     SingleMachineFactoryOptions* opts);
 
+// 工厂函数模板实例化宏，支持多种数据类型
 #define SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, Type) \
   extern_keyword template StatusOrPtr<UntypedSingleMachineSearcherBase>        \
   TreeXHybridFactory<Type>(                                                    \
@@ -47,18 +51,21 @@ StatusOrPtr<UntypedSingleMachineSearcherBase> TreeXHybridFactory(
           leaf_factory,                                                        \
       SingleMachineFactoryOptions* opts);
 
+// 支持所有主流数值类型的工厂实例化宏
 #define SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY(extern_keyword)               \
-  SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, int8_t);   \
-  SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, uint8_t);  \
-  SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, int16_t);  \
-  SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, int32_t);  \
-  SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, uint32_t); \
-  SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, int64_t);  \
-  SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, float);    \
-  SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, double);
+    SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, int8_t);   \
+    SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, uint8_t);  \
+    SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, int16_t);  \
+    SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, int32_t);  \
+    SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, uint32_t); \
+    SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, int64_t);  \
+    SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, float);    \
+    SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY_FOR_TYPE(extern_keyword, double);
 
+// 实例化所有类型的 TreeXHybrid 工厂模板
 SCANN_INSTANTIATE_TREE_X_HYBRID_FACTORY(extern);
 
+// research_scann 命名空间结束
 }  // namespace research_scann
 
 #endif

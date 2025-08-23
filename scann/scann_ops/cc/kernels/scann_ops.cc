@@ -37,10 +37,14 @@
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
+
+// TensorFlow ScaNN算子实现主入口
 namespace tensorflow {
 namespace scann_ops {
 namespace {
 
+
+// 获取Tensor并检查状态
 void GetTensorRequireOk(OpKernelContext* context, const absl::string_view name,
                         const Tensor** tensor) {
   OP_REQUIRES_OK(context, context->input(name, tensor));
@@ -48,6 +52,8 @@ void GetTensorRequireOk(OpKernelContext* context, const absl::string_view name,
 
 }  // namespace
 
+
+// ScaNN资源对象，管理底层ScaNN实例
 class ScannResource : public ResourceBase {
  public:
   explicit ScannResource()
@@ -59,12 +65,14 @@ class ScannResource : public ResourceBase {
 
   void Initialize() { initialized_ = true; }
 
+  // 底层ScaNN接口
   std::unique_ptr<research_scann::ScannInterface> scann_;
 
  private:
   bool initialized_ = false;
 };
 
+// 通过配置Tensor初始化ScaNN搜索器
 void CreateSearcherFromConfig(OpKernelContext* context,
                               ScannResource* resource) {
   const Tensor* config_tensor;
@@ -86,6 +94,8 @@ void CreateSearcherFromConfig(OpKernelContext* context,
   resource->Initialize();
 }
 
+
+// ScaNN搜索器创建算子
 class ScannCreateSearcherOp : public ResourceOpKernel<ScannResource> {
  public:
   explicit ScannCreateSearcherOp(OpKernelConstruction* context)
@@ -107,16 +117,20 @@ class ScannCreateSearcherOp : public ResourceOpKernel<ScannResource> {
   }
 };
 
+
+// 单查询ScaNN搜索算子
 class ScannSearchOp : public OpKernel {
  public:
   explicit ScannSearchOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
+    // 获取ScaNN资源
     ScannResource* scann_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &scann_resource));
     tensorflow::core::ScopedUnref unref_me(scann_resource);
 
+    // 获取输入Tensor
     const Tensor* query_tensor;
     const Tensor* final_nn_tensor;
     const Tensor* reorder_nn_tensor;
@@ -127,6 +141,7 @@ class ScannSearchOp : public OpKernel {
                        &reorder_nn_tensor);
     GetTensorRequireOk(context, "leaves_to_search", &leaves_tensor);
 
+    // 检查输入维度
     OP_REQUIRES(context, query_tensor->dims() == 1,
                 errors::InvalidArgument("Query must be one-dimensional. Use "
                                         "ScannSearchBatched for batching"));
@@ -135,10 +150,12 @@ class ScannSearchOp : public OpKernel {
     int final_nn = final_nn_tensor->scalar<int>()();
     int pre_reorder_nn = reorder_nn_tensor->scalar<int>()();
 
+    // 构造查询点
     auto query_span = TensorToConstSpan<float>(query_tensor);
     research_scann::DatapointPtr<float> query_ptr(
         nullptr, query_span.data(), query_span.size(), query_span.size());
     research_scann::NNResultsVector res;
+    // 执行搜索
     OP_REQUIRES_OK(context,
                    ConvertStatus(scann_resource->scann_->Search(
                        query_ptr, &res, final_nn, pre_reorder_nn, leaves)));
@@ -150,22 +167,27 @@ class ScannSearchOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output("distance", TensorShape({res_size}),
                                             &distance_t));
+    // 输出结果
     scann_resource->scann_->ReshapeNNResult(
         res, index_t->flat<int32_t>().data(), distance_t->flat<float>().data());
   }
 };
 
+
+// 批量查询ScaNN搜索算子
 class ScannSearchBatchedOp : public OpKernel {
  public:
   explicit ScannSearchBatchedOp(OpKernelConstruction* context)
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
+    // 获取ScaNN资源
     ScannResource* scann_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &scann_resource));
     tensorflow::core::ScopedUnref unref_me(scann_resource);
 
+    // 获取输入Tensor
     const Tensor* query_tensor;
     const Tensor* final_nn_tensor;
     const Tensor* reorder_nn_tensor;
@@ -178,6 +200,7 @@ class ScannSearchBatchedOp : public OpKernel {
     GetTensorRequireOk(context, "leaves_to_search", &leaves_tensor);
     GetTensorRequireOk(context, "parallel", &parallel_tensor);
 
+    // 检查输入维度
     OP_REQUIRES(context, query_tensor->dims() == 2,
                 errors::InvalidArgument(
                     "Expected 2-dimensional input for query batch."));
@@ -186,11 +209,13 @@ class ScannSearchBatchedOp : public OpKernel {
     int final_nn = final_nn_tensor->scalar<int>()();
     int pre_reorder_nn = reorder_nn_tensor->scalar<int>()();
 
+    // 构造批量查询数据集
     research_scann::DenseDataset<float> queries;
     OP_REQUIRES_OK(context, scann_ops::PopulateDenseDatasetFromTensor(
                                 *query_tensor, &queries));
     std::vector<research_scann::NNResultsVector> res(queries.size());
     auto res_span = research_scann::MakeMutableSpan(res);
+    // 并行或串行搜索
     if (parallel_tensor->scalar<bool>()())
       OP_REQUIRES_OK(
           context, ConvertStatus(scann_resource->scann_->SearchBatchedParallel(
@@ -201,6 +226,7 @@ class ScannSearchBatchedOp : public OpKernel {
                          queries, res_span, final_nn, pre_reorder_nn, leaves)));
     Tensor *index_t, *distance_t;
 
+    // 输出结果Tensor
     int64_t num_queries = static_cast<int64_t>(res.size());
     int64_t num_neighbors = 0;
     for (const auto& nn_res : res)
@@ -219,6 +245,8 @@ class ScannSearchBatchedOp : public OpKernel {
   }
 };
 
+
+// ScaNN对象转Tensor算子（序列化导出）
 class ScannToTensorsOp : public OpKernel {
  public:
   explicit ScannToTensorsOp(OpKernelConstruction* context)
@@ -227,15 +255,18 @@ class ScannToTensorsOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     using research_scann::ConstSpan;
 
+    // 获取ScaNN资源
     ScannResource* scann_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &scann_resource));
     tensorflow::core::ScopedUnref unref_me(scann_resource);
 
+    // 提取ScaNN配置和选项
     auto options_or_status = scann_resource->scann_->ExtractOptions();
     OP_REQUIRES_OK(context, ConvertStatus(options_or_status.status()));
     const auto& opts = options_or_status.value();
 
+    // 导出各类Tensor
     TensorFromProtoRequireOk(context, "scann_config",
                              scann_resource->scann_->config());
     TensorFromProtoRequireOk(context, "serialized_partitioner",
@@ -260,6 +291,7 @@ class ScannToTensorsOp : public OpKernel {
     TensorFromDenseDatasetRequireOk(context, "hashed_dataset",
                                     opts.hashed_dataset.get());
 
+    // 导出量化相关Tensor
     research_scann::DenseDataset<int8_t>* int8_dataset = nullptr;
     ConstSpan<float> int8_mults, dp_norms;
     auto int8_struct = opts.pre_quantized_fixed_point;
@@ -282,6 +314,7 @@ class ScannToTensorsOp : public OpKernel {
   }
 };
 
+// 通过序列化Tensor初始化ScaNN搜索器
 void CreateSearcherFromSerialized(OpKernelContext* context,
                                   ScannResource* resource) {
   const Tensor* db_tensor;
@@ -364,6 +397,8 @@ void CreateSearcherFromSerialized(OpKernelContext* context,
   resource->Initialize();
 }
 
+
+// Tensor转ScaNN对象算子（反序列化导入）
 class TensorsToScannOp : public ResourceOpKernel<ScannResource> {
  public:
   explicit TensorsToScannOp(OpKernelConstruction* context)

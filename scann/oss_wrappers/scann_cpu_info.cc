@@ -54,14 +54,15 @@ namespace research_scann {
 namespace port {
 namespace {
 
+// X86平台：CPUID信息类与初始化
 #ifdef PLATFORM_IS_X86
 class CPUIDInfo;
 void InitCPUIDInfo();
 
 CPUIDInfo *cpuid = nullptr;
 
+// 获取XCR0寄存器（用于AVX/AVX512检测）
 #ifdef PLATFORM_WINDOWS
-
 int GetXCR0EAX() { return _xgetbv(0); }
 #else
 int GetXCR0EAX() {
@@ -71,6 +72,7 @@ int GetXCR0EAX() {
 }
 #endif
 
+// X86平台：CPUID信息解析与特征检测
 class CPUIDInfo {
  public:
   CPUIDInfo()
@@ -122,6 +124,7 @@ class CPUIDInfo {
         have_ssse3_(0),
         have_hypervisor_(0) {}
 
+  // 初始化CPUID信息，解析各类CPU特征
   static void Initialize() {
     CHECK(cpuid == nullptr) << __func__ << " ran more than once";
     cpuid = new CPUIDInfo;
@@ -222,6 +225,7 @@ class CPUIDInfo {
     }
   }
 
+  // 查询指定CPU特征是否支持
   static bool TestFeature(CPUFeature feature) {
     InitCPUIDInfo();
 
@@ -327,6 +331,7 @@ class CPUIDInfo {
     return false;
   }
 
+  // 获取厂商字符串、家族号、型号
   string vendor_str() const { return vendor_str_; }
   int family() const { return family_; }
   int model_num() { return model_num_; }
@@ -386,19 +391,21 @@ class CPUIDInfo {
 
 absl::once_flag cpuid_once_flag;
 
+// 保证CPUID只初始化一次
 void InitCPUIDInfo() {
   absl::call_once(cpuid_once_flag, CPUIDInfo::Initialize);
 }
 
 #endif
 
+// ARM64平台：CPUID信息类与初始化（Linux专用）
 #if defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
-
 class CPUIDInfo;
 void InitCPUIDInfo();
 
 CPUIDInfo *cpuid = nullptr;
 
+// ARM64平台：解析MIDR寄存器，检测Neoverse型号
 class CPUIDInfo {
  public:
   CPUIDInfo()
@@ -408,6 +415,7 @@ class CPUIDInfo {
         is_arm_neoverse_v1_(0),
         is_arm_neoverse_n1_(0) {}
 
+  // 初始化CPUID信息，解析ARM Neoverse型号
   static void Initialize() {
     if (cpuid != nullptr) return;
 
@@ -475,6 +483,7 @@ class CPUIDInfo {
   int implementer() const { return implementer_; }
   int cpunum() const { return cpunum_; }
 
+  // 查询ARM64 CPU型号是否匹配
   static bool TestAarch64CPU(Aarch64CPU cpu) {
     InitCPUIDInfo();
     switch (cpu) {
@@ -495,6 +504,7 @@ class CPUIDInfo {
 
 absl::once_flag cpuid_once_flag;
 
+// 保证CPUID只初始化一次
 void InitCPUIDInfo() {
   absl::call_once(cpuid_once_flag, CPUIDInfo::Initialize);
 }
@@ -503,6 +513,7 @@ void InitCPUIDInfo() {
 
 }  // namespace
 
+// 查询X86平台指定CPU特征
 bool TestCPUFeature(CPUFeature feature) {
 #ifdef PLATFORM_IS_X86
   return CPUIDInfo::TestFeature(feature);
@@ -511,6 +522,7 @@ bool TestCPUFeature(CPUFeature feature) {
 #endif
 }
 
+// 查询ARM64平台指定CPU型号
 bool TestAarch64CPU(Aarch64CPU cpu) {
 #if defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
   return CPUIDInfo::TestAarch64CPU(cpu);
@@ -519,6 +531,7 @@ bool TestAarch64CPU(Aarch64CPU cpu) {
 #endif
 }
 
+// 获取CPU厂商字符串
 std::string CPUVendorIDString() {
 #ifdef PLATFORM_IS_X86
   InitCPUIDInfo();
@@ -528,6 +541,7 @@ std::string CPUVendorIDString() {
 #endif
 }
 
+// 获取CPU家族号
 int CPUFamily() {
 #ifdef PLATFORM_IS_X86
   InitCPUIDInfo();
@@ -540,6 +554,7 @@ int CPUFamily() {
 #endif
 }
 
+// 获取CPU型号
 int CPUModelNum() {
 #ifdef PLATFORM_IS_X86
   InitCPUIDInfo();
@@ -552,11 +567,10 @@ int CPUModelNum() {
 #endif
 }
 
+// 获取SMT（超线程）数量（X86专用）
 int CPUIDNumSMT() {
 #ifdef PLATFORM_IS_X86
-
   uint32 eax, ebx, ecx, edx;
-
   GETCPUID(eax, ebx, ecx, edx, 0, 0);
   if (eax >= 11) {
     GETCPUID(eax, ebx, ecx, edx, 11, 0);

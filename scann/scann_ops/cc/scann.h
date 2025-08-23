@@ -40,19 +40,24 @@ namespace research_scann {
 
 class ScannInterface {
  public:
+  // ScaNN工厂产物类型：包含配置、数据集和工厂参数
   using ScannArtifacts =
       std::tuple<ScannConfig, shared_ptr<DenseDataset<float>>,
                  SingleMachineFactoryOptions>;
 
+  // 加载工厂产物（从配置和资产）
   static StatusOr<ScannArtifacts> LoadArtifacts(const ScannConfig& config,
                                                 const ScannAssets& orig_assets);
+  // 加载工厂产物（从目录和pbtxt）
   static StatusOr<ScannArtifacts> LoadArtifacts(
       const std::string& artifacts_dir,
       const std::string& scann_assets_pbtxt = "");
 
+  // 创建Searcher对象
   static StatusOr<std::unique_ptr<SingleMachineSearcherBase<float>>>
   CreateSearcher(ScannArtifacts artifacts);
 
+  // 多种初始化接口（支持pbtxt、配置对象、原始数据等）
   Status Initialize(const std::string& config_pbtxt,
                     const std::string& scann_assets_pbtxt);
   Status Initialize(ScannConfig config, SingleMachineFactoryOptions opts,
@@ -66,13 +71,16 @@ class ScannInterface {
                     const std::string& config, int training_threads);
   Status Initialize(ScannArtifacts artifacts);
 
+  // 获取可变器（用于增量训练等）
   StatusOr<typename SingleMachineSearcherBase<float>::Mutator*> GetMutator()
       const {
     return scann_->GetMutator();
   }
 
+  // 重新训练和重建索引
   StatusOr<ScannConfig> RetrainAndReindex(const string& config);
 
+  // 单查询/批量/并行批量搜索接口
   Status Search(const DatapointPtr<float> query, NNResultsVector* res,
                 int final_nn, int pre_reorder_nn, int leaves) const;
   Status SearchBatched(const DenseDataset<float>& queries,
@@ -82,9 +90,12 @@ class ScannInterface {
                                MutableSpan<NNResultsVector> res, int final_nn,
                                int pre_reorder_nn, int leaves,
                                int batch_size = 256) const;
+  // 序列化ScaNN资产到文件
   StatusOr<ScannAssets> Serialize(std::string path, bool relative_path = false);
+  // 提取工厂参数
   StatusOr<SingleMachineFactoryOptions> ExtractOptions();
 
+  // 搜索结果重排（单条/批量），用于输出格式转换
   template <typename T_idx>
   void ReshapeNNResult(const NNResultsVector& res, T_idx* indices,
                        float* distances);
@@ -92,10 +103,12 @@ class ScannInterface {
   void ReshapeBatchedNNResult(ConstSpan<NNResultsVector> res, T_idx* indices,
                               float* distances, int neighbors_per_query);
 
+  // 获取float32类型数据集（如有需要自动转换）
   StatusOr<shared_ptr<const DenseDataset<float>>> Float32DatasetIfNeeded() {
     return scann_->SharedFloatDatasetIfNeeded();
   }
 
+  // 获取数据点数量、维度、配置
   size_t n_points() const { return scann_->DatasetSize().value(); }
   DimensionIndex dimensionality() const { return dimensionality_; }
   const ScannConfig* config() {
@@ -103,6 +116,7 @@ class ScannInterface {
     return &config_;
   }
 
+  // 获取/设置并行查询线程池
   std::shared_ptr<ThreadPool> parallel_query_pool() const {
     return parallel_query_pool_;
   }
@@ -111,27 +125,31 @@ class ScannInterface {
     parallel_query_pool_ = StartThreadPool("ScannQueryingPool", num_threads);
   }
 
+  // 健康状态相关接口
   using ScannHealthStats = SingleMachineSearcherBase<float>::HealthStats;
   StatusOr<ScannHealthStats> GetHealthStats() const;
   Status InitializeHealthStats();
 
- private:
+private:
+  // 获取搜索参数（单条/批量）
   SearchParameters GetSearchParameters(int final_nn, int pre_reorder_nn,
                                        int leaves) const;
   vector<SearchParameters> GetSearchParametersBatched(
       int batch_size, int final_nn, int pre_reorder_nn, int leaves,
       bool set_unspecified) const;
-  DimensionIndex dimensionality_;
-  std::unique_ptr<SingleMachineSearcherBase<float>> scann_;
-  ScannConfig config_;
+  DimensionIndex dimensionality_; // 数据维度
+  std::unique_ptr<SingleMachineSearcherBase<float>> scann_; // 搜索器对象
+  ScannConfig config_; // 当前配置
 
-  float result_multiplier_;
+  float result_multiplier_; // 距离结果缩放因子
 
-  size_t min_batch_size_;
+  size_t min_batch_size_; // 最小批量大小
 
-  std::shared_ptr<ThreadPool> parallel_query_pool_;
+  std::shared_ptr<ThreadPool> parallel_query_pool_; // 查询线程池
 };
 
+template <typename T_idx>
+// 搜索结果重排：将NNResultsVector转换为索引和距离数组
 template <typename T_idx>
 void ScannInterface::ReshapeNNResult(const NNResultsVector& res, T_idx* indices,
                                      float* distances) {
@@ -141,6 +159,8 @@ void ScannInterface::ReshapeNNResult(const NNResultsVector& res, T_idx* indices,
   }
 }
 
+template <typename T_idx>
+// 批量搜索结果重排：将多个NNResultsVector转换为索引和距离数组
 template <typename T_idx>
 void ScannInterface::ReshapeBatchedNNResult(ConstSpan<NNResultsVector> res,
                                             T_idx* indices, float* distances,
@@ -159,6 +179,8 @@ void ScannInterface::ReshapeBatchedNNResult(ConstSpan<NNResultsVector> res,
   }
 }
 
+template <typename T>
+// 解析Text格式的protobuf字符串
 template <typename T>
 Status ParseTextProto(T* proto, absl::string_view proto_str) {
   ::google::protobuf::TextFormat::ParseFromString(proto_str, proto);

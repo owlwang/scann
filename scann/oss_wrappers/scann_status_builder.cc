@@ -24,18 +24,23 @@
 
 namespace research_scann {
 
+// StatusBuilder构造函数：从absl::Status初始化
 StatusBuilder::StatusBuilder(const absl::Status& status) : status_(status) {}
 
+// StatusBuilder构造函数：右值absl::Status初始化
 StatusBuilder::StatusBuilder(absl::Status&& status) : status_(status) {}
 
+// StatusBuilder构造函数：通过StatusCode初始化
 StatusBuilder::StatusBuilder(absl::StatusCode code) : status_(code, "") {}
 
+// StatusBuilder拷贝构造函数，深拷贝stream内容
 StatusBuilder::StatusBuilder(const StatusBuilder& sb) : status_(sb.status_) {
   if (sb.streamptr_ != nullptr) {
     streamptr_ = std::make_unique<std::ostringstream>(sb.streamptr_->str());
   }
 }
 
+// 构造最终absl::Status对象，合并stream消息
 absl::Status StatusBuilder::CreateStatus() && {
   auto result = [&] {
     if (streamptr_->str().empty()) return status_;
@@ -48,19 +53,23 @@ absl::Status StatusBuilder::CreateStatus() && {
   return result;
 }
 
+// 日志错误（占位实现）
 StatusBuilder& StatusBuilder::LogError() & { return *this; }
 StatusBuilder&& StatusBuilder::LogError() && { return std::move(LogError()); }
 
+// StatusBuilder转absl::Status（左值）
 StatusBuilder::operator absl::Status() const& {
   if (streamptr_ == nullptr) return status_;
   return StatusBuilder(*this).CreateStatus();
 }
 
+// StatusBuilder转absl::Status（右值）
 StatusBuilder::operator absl::Status() && {
   if (streamptr_ == nullptr) return status_;
   return std::move(*this).CreateStatus();
 }
 
+// 各类错误类型的StatusBuilder构造器
 StatusBuilder AbortedErrorBuilder() {
   return StatusBuilder(absl::StatusCode::kAborted);
 }

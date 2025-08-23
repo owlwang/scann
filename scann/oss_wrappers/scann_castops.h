@@ -20,6 +20,7 @@
 namespace research_scann {
 namespace cast_ops {
 
+// double转float，溢出时返回正负无穷
 inline float DoubleToFloat(double value) {
   if (value < std::numeric_limits<float>::lowest())
     return -std::numeric_limits<float>::infinity();
@@ -29,6 +30,7 @@ inline float DoubleToFloat(double value) {
   return static_cast<float>(value);
 }
 
+// double转float，溢出时返回float极值
 inline float DoubleToFiniteFloat(double value) {
   if (value < std::numeric_limits<float>::lowest())
     return std::numeric_limits<float>::lowest();

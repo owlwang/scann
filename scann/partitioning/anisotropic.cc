@@ -18,6 +18,7 @@
 
 namespace research_scann {
 
+// 构造函数：初始化AVQ累加器，支持eta参数控制加权方式
 AvqAccumulator::AvqAccumulator(size_t dimensionality, float eta)
     : dimensionality_(dimensionality),
       eta_(eta),
@@ -27,6 +28,7 @@ AvqAccumulator::AvqAccumulator(size_t dimensionality, float eta)
       weighted_vector_sum_(EVectorXf::Zero(dimensionality)),
       total_weight_(0) {}
 
+// 累加一批向量，更新加权和与矩阵
 AvqAccumulator& AvqAccumulator::AddVectors(ConstSpan<float> vecs) {
   if (IsEmpty(vecs)) return *this;
 
@@ -68,6 +70,7 @@ AvqAccumulator& AvqAccumulator::AddVectors(ConstSpan<float> vecs) {
   return *this;
 }
 
+// 计算加权中心，支持eta控制
 EVectorXf AvqAccumulator::GetCenter() {
   if (total_weight_ == 0) return EVectorXf::Zero(dimensionality_);
 
@@ -83,8 +86,9 @@ EVectorXf AvqAccumulator::GetCenter() {
   return eta_ * inverter.solve(weighted_vector_sum_);
 }
 
+// 计算重标定因子（分子/分母），用于分区中心归一化
 std::pair<double, double> ComputeRescaleFraction(
-    ConstSpan<float> partition_center, ConstSpan<float> partition_data) {
+  ConstSpan<float> partition_center, ConstSpan<float> partition_data) {
   double centroid_sq_norm = 0;
   for (float f : partition_center) centroid_sq_norm += f * f;
 

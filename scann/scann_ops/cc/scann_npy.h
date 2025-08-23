@@ -39,43 +39,57 @@ using np_row_major_arr =
     pybind11::array_t<T, pybind11::array::c_style | pybind11::array::forcecast>;
 
 class ScannNumpy {
- public:
-  ScannNumpy(const std::string& artifacts_dir,
-             const std::string& scann_assets_pbtxt);
-  ScannNumpy(const np_row_major_arr<float>& np_dataset,
-             const std::string& config, int training_threads);
-  std::pair<pybind11::array_t<DatapointIndex>, pybind11::array_t<float>> Search(
-      const np_row_major_arr<float>& query, int final_nn, int pre_reorder_nn,
-      int leaves);
-  std::pair<pybind11::array_t<DatapointIndex>, pybind11::array_t<float>>
-  SearchBatched(const np_row_major_arr<float>& queries, int final_nn,
-                int pre_reorder_nn, int leaves, bool parallel = false,
-                int batch_size = 256);
-  void Serialize(std::string path, bool relative_path = false);
+public:
+    // 构造函数：从资产目录和pbtxt初始化
+    ScannNumpy(const std::string& artifacts_dir,
+                         const std::string& scann_assets_pbtxt);
+    // 构造函数：从numpy数据集和配置初始化
+    ScannNumpy(const np_row_major_arr<float>& np_dataset,
+                         const std::string& config, int training_threads);
+    // 单条查询接口，返回索引和距离
+    std::pair<pybind11::array_t<DatapointIndex>, pybind11::array_t<float>> Search(
+            const np_row_major_arr<float>& query, int final_nn, int pre_reorder_nn,
+            int leaves);
+    // 批量查询接口，支持并行和批量大小设置
+    std::pair<pybind11::array_t<DatapointIndex>, pybind11::array_t<float>>
+    SearchBatched(const np_row_major_arr<float>& queries, int final_nn,
+                                int pre_reorder_nn, int leaves, bool parallel = false,
+                                int batch_size = 256);
+    // 序列化ScaNN资产到文件
+    void Serialize(std::string path, bool relative_path = false);
 
-  vector<DatapointIndex> Upsert(
-      std::vector<std::optional<DatapointIndex>> indices,
-      std::vector<np_row_major_arr<float>>& vecs, int batch_size = 256);
-  vector<DatapointIndex> Delete(std::vector<DatapointIndex> indices);
+    // 插入/更新数据点，返回实际插入的索引
+    vector<DatapointIndex> Upsert(
+            std::vector<std::optional<DatapointIndex>> indices,
+            std::vector<np_row_major_arr<float>>& vecs, int batch_size = 256);
+    // 删除数据点，返回实际删除的索引
+    vector<DatapointIndex> Delete(std::vector<DatapointIndex> indices);
 
-  int Rebalance(const string& config = "");
+    // 重新平衡索引结构
+    int Rebalance(const string& config = "");
 
-  size_t Size() const;
+    // 获取数据点数量
+    size_t Size() const;
 
-  void SetNumThreads(int num_threads);
+    // 设置并行线程数
+    void SetNumThreads(int num_threads);
 
-  void Reserve(size_t num_datapoints);
+    // 预分配数据点空间
+    void Reserve(size_t num_datapoints);
 
-  static string SuggestAutopilot(absl::string_view config, DatapointIndex n,
-                                 DimensionIndex dim);
+    // 自动推荐配置（根据数据规模和维度）
+    static string SuggestAutopilot(absl::string_view config, DatapointIndex n,
+                                                                 DimensionIndex dim);
 
-  string Config();
+    // 获取当前配置
+    string Config();
 
-  pybind11::dict GetHealthStats() const;
-  void InitializeHealthStats();
+    // 获取健康状态
+    pybind11::dict GetHealthStats() const;
+    void InitializeHealthStats();
 
- private:
-  ScannInterface scann_;
+private:
+    ScannInterface scann_; // 底层ScaNN接口对象
 };
 
 }  // namespace research_scann

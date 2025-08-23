@@ -46,6 +46,7 @@ ABSL_FLAG(bool, use_memory_optimized_immutable_docid_collection, false,
 namespace research_scann {
 namespace {
 
+// AmortizedAppend：扩容并追加数据，保证 vector 空间充足
 void AmortizedAppend(std::vector<char>& v, size_t to_add) {
   size_t new_size = v.size() + to_add;
   size_t capacity = v.capacity();
@@ -64,6 +65,7 @@ class ImmutableCollection final : public DocidCollectionInterface {
   ImmutableCollection(const ImmutableCollection& rhs) = default;
   ImmutableCollection& operator=(const ImmutableCollection& rhs) = default;
 
+  // 追加 docid 到不可变集合
   Status Append(string_view docid) final;
   size_t size() const final { return size_; }
   bool empty() const final { return size_ == 0; }
@@ -74,11 +76,13 @@ class ImmutableCollection final : public DocidCollectionInterface {
     return unique_ptr<DocidCollectionInterface>(new ImmutableCollection(*this));
   }
 
+  // 获取指定索引的 docid
   string_view Get(size_t i) const final {
     DCHECK_LT(i, size_);
     return chunks_[c_idx(i)].Get(c_offset(i));
   }
 
+  // 批量获取 docid，支持多阶段预取加速
   void MultiGet(size_t num_docids, DpIdxGetter docid_idx_getter,
                 StringSetter docid_setter) const final {
     constexpr size_t kBatchSize = 24;
@@ -110,6 +114,7 @@ class ImmutableCollection final : public DocidCollectionInterface {
                      std::move(stage3_cb), std::move(stage4_cb)});
   }
 
+  // 集合容量
   size_t capacity() const final { return chunks_.size() * kChunkSize; }
   size_t MemoryUsage() const final;
   void Reserve(DatapointIndex n_elements) final;
@@ -155,6 +160,7 @@ class MutableCollection final : public DocidCollectionInterface {
   static unique_ptr<MutableCollection> FromImmutableDestructive(
       ImmutableCollection* static_impl);
 
+  // 追加 docid 到可变集合
   Status Append(string_view docid) final;
   size_t size() const final { return size_; }
   bool empty() const final { return size_ == 0; }
@@ -165,11 +171,13 @@ class MutableCollection final : public DocidCollectionInterface {
     return unique_ptr<DocidCollectionInterface>(new MutableCollection(*this));
   }
 
+  // 获取指定索引的 docid
   string_view Get(size_t i) const final {
     DCHECK_LT(i, size_);
     return chunks_[c_idx(i)].payload[c_offset(i)].ToStringPiece();
   }
 
+  // 批量获取 docid，支持多阶段预取加速
   void MultiGet(size_t num_docids, DpIdxGetter docid_idx_getter,
                 StringSetter docid_setter) const final {
     constexpr size_t kBatchSize = 24;
@@ -198,6 +206,7 @@ class MutableCollection final : public DocidCollectionInterface {
                      std::move(stage3_cb), std::move(stage4_cb)});
   }
 
+  // 集合容量
   size_t capacity() const final { return chunks_.size() * kChunkSize; }
   size_t MemoryUsage() const final;
   void Reserve(DatapointIndex n_elements) final;
@@ -275,6 +284,7 @@ class ImmutableMemoryOptCollection : public DocidCollectionInterface {
     last_chunk_size_ = 0;
   }
 
+  // 追加 docid 到内存优化不可变集合
   Status Append(absl::string_view docid) final {
     if (chunks_.empty() || last_chunk_size_ == kChunkSize) {
       last_chunk_size_ = 0;
@@ -293,6 +303,7 @@ class ImmutableMemoryOptCollection : public DocidCollectionInterface {
     return std::make_unique<ImmutableMemoryOptCollection>(*this);
   }
 
+  // 获取指定索引的 docid
   absl::string_view Get(size_t i) const final {
     DCHECK_LT(i, size());
     size_t chunk_num = i / kChunkSize;
@@ -304,6 +315,7 @@ class ImmutableMemoryOptCollection : public DocidCollectionInterface {
     return payload;
   }
 
+  // 批量获取 docid
   void MultiGet(size_t num_docids, DpIdxGetter docid_idx_getter,
                 StringSetter docid_setter) const final {
     for (size_t i = 0; i < num_docids; ++i) {
@@ -312,6 +324,7 @@ class ImmutableMemoryOptCollection : public DocidCollectionInterface {
     }
   }
 
+  // 集合容量
   size_t capacity() const final { return chunks_.size() * kChunkSize; }
 
   size_t MemoryUsage() const final {

@@ -14,9 +14,13 @@
 
 #include "scann/scann_ops/cc/kernels/scann_ops_utils.h"
 
+
+// ScaNN TensorFlow算子工具函数实现
 namespace tensorflow {
 namespace scann_ops {
 
+
+// 将protobuf序列化内容写入Tensor
 absl::Status TensorFromProto(OpKernelContext* context, absl::string_view name,
                              const protobuf::MessageLite* proto) {
   if (proto == nullptr) return EmptyTensor(context, name);
@@ -30,20 +34,28 @@ absl::Status TensorFromProto(OpKernelContext* context, absl::string_view name,
   return OkStatus();
 }
 
+
+// 检查状态的TensorFromProto
 void TensorFromProtoRequireOk(OpKernelContext* context, absl::string_view name,
                               const protobuf::MessageLite* proto) {
   OP_REQUIRES_OK(context, TensorFromProto(context, name, proto));
 }
 
+
+// 创建空Tensor
 absl::Status EmptyTensor(OpKernelContext* context, absl::string_view name) {
   Tensor* tensor;
   return context->allocate_output(name, TensorShape({}), &tensor);
 }
 
+
+// 检查状态的空Tensor创建
 void EmptyTensorRequireOk(OpKernelContext* context, absl::string_view name) {
   OP_REQUIRES_OK(context, EmptyTensor(context, name));
 }
 
+
+// TensorFlow Status与absl::Status转换（直接返回）
 Status ConvertStatus(const Status& status) { return status; }
 
 }  // namespace scann_ops

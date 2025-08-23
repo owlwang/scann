@@ -157,10 +157,13 @@ StatusOr<vector<std::vector<DatapointIndex>>> TokenizeDatabaseWithAvq(
 }  // namespace
 
 template <typename T>
+// 创建Tree-X分区器，支持多种分区器来源和AVQ（向量量化）
+template <typename T>
 StatusOr<CreateTreeXPartitionerResult<T>> CreateTreeXPartitioner(
     shared_ptr<const TypedDataset<T>> dataset, const ScannConfig& config,
     SingleMachineFactoryOptions* opts) {
   const PartitioningConfig& pconfig = config.partitioning();
+  // Tree-X混合分区器只支持1个epoch
   if (pconfig.num_partitioning_epochs() != 1) {
     return InvalidArgumentError(
         "num_partitioning_epochs must be == 1 for tree-X hybrids.");
@@ -168,37 +171,46 @@ StatusOr<CreateTreeXPartitionerResult<T>> CreateTreeXPartitioner(
 
   bool should_apply_avq = false;
   unique_ptr<Partitioner<T>> partitioner;
+  // 不支持预训练的kmeans树分区器
   if (opts->kmeans_tree) {
     return InvalidArgumentError(
         "pre-trained kmeans-tree partitioners are not supported.");
   } else if (opts->serialized_partitioner) {
+    // 支持序列化分区器
     SCANN_ASSIGN_OR_RETURN(
         partitioner,
         PartitionerFromSerialized<T>(*opts->serialized_partitioner, pconfig));
   } else if (!pconfig.has_partitioner_prefix() ||
              pconfig.partitioning_on_the_fly()) {
+    // 支持在线分区器，需要原始数据集
     if (!dataset) {
       return InvalidArgumentError(
           "Partitioning_on_the_fly needs original dataset to proceed.");
     }
+    // 不允许预分好token的数据集
     if (opts->datapoints_by_token) {
       return InvalidArgumentError(
           "Cannot use a pretokenized dataset without a precomputed "
           "partitioner.");
     }
+    // 创建分区器
     SCANN_ASSIGN_OR_RETURN(partitioner,
                            PartitionerFactory<T>(dataset.get(), pconfig,
                                                  opts->parallelization_pool));
+    // 是否应用AVQ
     should_apply_avq = !std::isnan(pconfig.avq());
   } else {
+    // 其他情况不支持
     return InvalidArgumentError("Loading a partitioner is not supported.");
   }
   if (!partitioner) {
     return UnknownError("Error creating partitioner for tree-X hybrids.");
   }
+  // 设置分区器为数据库模式
   partitioner->set_tokenization_mode(UntypedPartitioner::DATABASE);
 
   vector<std::vector<DatapointIndex>> token_to_datapoint_index;
+  // 根据是否应用AVQ或是否有预分token，决定分区方式
   if (should_apply_avq) {
     SCANN_ASSIGN_OR_RETURN(
         token_to_datapoint_index,
@@ -211,6 +223,7 @@ StatusOr<CreateTreeXPartitionerResult<T>> CreateTreeXPartitioner(
                            partitioner->TokenizeDatabase(
                                *dataset, opts->parallelization_pool.get()));
   }
+  // 返回分区器和token分布
   return CreateTreeXPartitionerResult<T>{std::move(partitioner),
                                          std::move(token_to_datapoint_index)};
 }
@@ -715,16 +728,21 @@ StatusOrSearcherUntyped NonResidualTreeXHybridFactory(
 }
 
 template <typename T>
+// Tree-X混合工厂：根据配置选择不同的分支实现
+template <typename T>
 StatusOrSearcherUntyped TreeXHybridFactory(
     const ScannConfig& config, const shared_ptr<TypedDataset<T>>& dataset,
     const GenericSearchParameters& params, LeafFactoryT<T> leaf_factory,
     SingleMachineFactoryOptions* opts) {
+  // 使用残差量化分支
   if (config.hash().asymmetric_hash().use_residual_quantization()) {
     return TreeAhHybridResidualFactory<T>(config, dataset, params, opts);
+  // 使用预训练定点量化分支（仅float类型）
   } else if (std::is_same<T, float>::value &&
              config.brute_force().fixed_point().enabled() &&
              opts->pre_quantized_fixed_point) {
     return PretrainedSQTreeXHybridFactory(config, nullptr, params, opts);
+  // 默认分支：非残差Tree-X混合
   } else {
     return NonResidualTreeXHybridFactory<T>(config, dataset, params,
                                             leaf_factory, opts);

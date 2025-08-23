@@ -23,6 +23,7 @@
 namespace research_scann {
 namespace internal {
 
+// 计算每个维度的倒数量化因子，用于反量化操作
 std::vector<float> InverseMultiplier(PreQuantizedFixedPoint* fixed_point) {
   std::vector<float> inverse_multipliers;
   inverse_multipliers.resize(fixed_point->multiplier_by_dimension->size());

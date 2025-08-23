@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
+// Asymmetric Hashing 2 索引器实现，支持多种量化方案的哈希编码与重构
 #include "scann/hashes/asymmetric_hashing2/indexing.h"
 
 #include <cstdint>
@@ -39,9 +41,15 @@
 #include "scann/utils/types.h"
 #include "scann/utils/util_functions.h"
 
+
+// research_scann::asymmetric_hashing2 命名空间，包含所有相关实现
 namespace research_scann {
 namespace asymmetric_hashing2 {
 
+// Indexer 构造函数，初始化投影、距离度量、模型等成员
+// 并根据量化方案预处理中心点数据，便于后续高效哈希和重构
+
+// 模板声明区，支持 float/int 等多种类型
 template <typename T>
 Indexer<T>::Indexer(shared_ptr<const ChunkingProjection<T>> projector,
                     shared_ptr<const DistanceMeasure> quantization_distance,
@@ -73,16 +81,21 @@ Indexer<T>::Indexer(shared_ptr<const ChunkingProjection<T>> projector,
 }
 
 template <typename T>
+// 哈希函数，根据不同量化方案分派到具体实现
+// 支持 PRODUCT、PRODUCT_AND_BIAS、STACKED、PRODUCT_AND_PACK 四种方案
+template <typename T>
 Status Indexer<T>::Hash(const DatapointPtr<T>& input,
                         MutableSpan<uint8_t> hashed) const {
   if (model_->quantization_scheme() == AsymmetricHasherConfig::PRODUCT) {
     DCHECK_EQ(hashed.size(), hash_space_dimension());
+    // 普通产品量化哈希
     return asymmetric_hashing_internal::IndexDatapoint<T>(
         input, *projector_, *quantization_distance_, model_->centers(), hashed);
   } else if (model_->quantization_scheme() ==
              AsymmetricHasherConfig::PRODUCT_AND_BIAS) {
     DCHECK_EQ(hashed.size(), hash_space_dimension());
 
+    // 产品量化+偏置哈希，最后一维为 bias
     SCANN_RETURN_IF_ERROR(asymmetric_hashing_internal::IndexDatapoint<T>(
         MakeDatapointPtr(input.values(), input.dimensionality() - 1),
         *projector_, *quantization_distance_, model_->centers(), hashed));
@@ -96,11 +109,13 @@ Status Indexer<T>::Hash(const DatapointPtr<T>& input,
     return OkStatus();
   } else if (model_->quantization_scheme() == AsymmetricHasherConfig::STACKED) {
     DCHECK_EQ(hashed.size(), hash_space_dimension());
+    // 堆叠量化哈希
     return asymmetric_hashing_internal::StackedQuantizers<T>::Hash(
         input, *projector_, *quantization_distance_, model_->centers(), hashed);
   } else if (model_->quantization_scheme() ==
              AsymmetricHasherConfig::PRODUCT_AND_PACK) {
     DCHECK_EQ(hashed.size(), hash_space_dimension());
+    // 产品量化+打包哈希，采用 nibble 压缩
     std::vector<uint8_t> unpacked(model_->centers().size());
     SCANN_RETURN_IF_ERROR(asymmetric_hashing_internal::IndexDatapoint<T>(
         input, *projector_, *quantization_distance_, model_->centers(),
@@ -108,6 +123,7 @@ Status Indexer<T>::Hash(const DatapointPtr<T>& input,
     PackNibblesDatapoint(unpacked, hashed);
     return OkStatus();
   } else {
+    // 不支持的量化方案
     return UnimplementedError(
         "The model's quantization scheme is not supported.");
   }
@@ -163,6 +179,9 @@ Status Indexer<T>::HashWithNoiseShaping(
 }
 
 template <typename T>
+// 噪声整形哈希，支持 PRODUCT 和 STACKED 量化方案
+// 仅支持 Squared L2 距离和稠密输入
+template <typename T>
 Status Indexer<T>::HashWithNoiseShaping(
     const DatapointPtr<T>& maybe_residual, const DatapointPtr<T>& original,
     MutableSpan<uint8_t> hashed,
@@ -178,10 +197,12 @@ Status Indexer<T>::HashWithNoiseShaping(
         "Noised-shaped hashing only works with dense inputs for now.");
   }
   if (model_->quantization_scheme() == AsymmetricHasherConfig::PRODUCT) {
+    // 普通产品量化噪声整形
     return asymmetric_hashing_internal::AhImpl<T>::IndexDatapointNoiseShaped(
         maybe_residual, original, *projector_, model_->centers(),
         noise_shaping_param.threshold, noise_shaping_param.eta, hashed);
   } else if (model_->quantization_scheme() == AsymmetricHasherConfig::STACKED) {
+    // 堆叠量化噪声整形
     SCANN_RETURN_IF_ERROR(
         asymmetric_hashing_internal::StackedQuantizers<T>::Hash(
             maybe_residual, *projector_, *quantization_distance_,
@@ -192,6 +213,7 @@ Status Indexer<T>::HashWithNoiseShaping(
                                       noise_shaping_param.threshold,
                                       noise_shaping_param.eta, hashed);
   } else {
+    // 其它量化方案暂不支持
     return UnimplementedError(
         "Noise shaping only works with PRODUCT and STACKED quantization for "
         "now.");
@@ -222,6 +244,7 @@ Status Indexer<T>::Hash(const DatapointPtr<T>& input,
 
 namespace {
 
+// 产品量化重构，将哈希码映射回原始空间近似向量
 template <typename FloatT>
 SCANN_INLINE void ReconstructProductQuantized(
     const std::vector<FloatT>& flattend_model,
@@ -246,6 +269,7 @@ SCANN_INLINE void ReconstructProductQuantized(
   }
 }
 
+// 计算原始向量与哈希码重构向量之间的距离，支持多种距离度量
 template <typename FloatT, typename Reduce>
 SCANN_INLINE FloatT
 ComputeDistance(ConstSpan<FloatT>& original, ConstSpan<uint8_t> hashed,
@@ -285,8 +309,11 @@ ComputeDistance(ConstSpan<FloatT>& original, ConstSpan<uint8_t> hashed,
   return acc0 + acc1 + acc_odd;
 }
 
+// 辅助函数与内部实现命名空间结束
 }  // namespace
 
+template <typename T>
+// 对整个数据集进行哈希编码，返回哈希后的数据集
 template <typename T>
 StatusOr<DenseDataset<uint8_t>> Indexer<T>::HashDataset(
     const TypedDataset<T>& dataset) const {
@@ -299,6 +326,8 @@ StatusOr<DenseDataset<uint8_t>> Indexer<T>::HashDataset(
   return {std::move(hashed_dataset)};
 }
 
+template <typename T>
+// 计算原始向量与哈希码之间的距离，优先用高效路径，否则回退重构再计算
 template <typename T>
 StatusOr<FloatingTypeFor<T>> Indexer<T>::DistanceBetweenOriginalAndHashed(
     ConstSpan<FloatT> original, ConstSpan<uint8_t> hashed,
@@ -332,12 +361,15 @@ StatusOr<FloatingTypeFor<T>> Indexer<T>::DistanceBetweenOriginalAndHashed(
   }
 
 fallback:
+  // 回退路径：重构哈希码为近似向量再计算距离
   Datapoint<FloatT> reconstructed;
   SCANN_RETURN_IF_ERROR(Reconstruct(MakeDatapointPtr(hashed), &reconstructed));
   return distance->GetDistance(MakeDatapointPtr(original),
                                reconstructed.ToPtr());
 }
 
+template <typename T>
+// 哈希码重构为近似原始向量，支持所有量化方案
 template <typename T>
 Status Indexer<T>::Reconstruct(ConstSpan<uint8_t> input,
                                MutableSpan<FloatT> reconstructed) const {
@@ -355,6 +387,7 @@ Status Indexer<T>::Reconstruct(ConstSpan<uint8_t> input,
     ReconstructProductQuantized(flattend_model_, subspace_sizes_, input,
                                 reconstructed);
 
+    // 处理 bias，最后一维为 bias
     const float bias = strings::KeyToFloat(string_view(
         reinterpret_cast<const char*>(&input[input.size() - sizeof(float)]),
         sizeof(float)));
@@ -368,6 +401,7 @@ Status Indexer<T>::Reconstruct(ConstSpan<uint8_t> input,
     ReconstructProductQuantized(flattend_model_, subspace_sizes_, unpacked,
                                 reconstructed);
   } else {
+    // 不支持的量化方案
     return UnimplementedError(
         "The model's quantization scheme is not supported.");
   }
@@ -427,6 +461,8 @@ DimensionIndex Indexer<T>::original_space_dimension() const {
 }
 
 template <typename T>
+// 计算原始向量与哈希重构向量的残差
+template <typename T>
 Status Indexer<T>::ComputeResidual(const DatapointPtr<T>& original,
                                    const DatapointPtr<uint8_t>& hashed,
                                    Datapoint<FloatT>* result) const {
@@ -442,7 +478,10 @@ Status Indexer<T>::ComputeResidual(const DatapointPtr<T>& original,
   return OkStatus();
 }
 
+// 实例化所有支持类型的 Indexer 模板
 SCANN_INSTANTIATE_TYPED_CLASS(, Indexer);
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann

@@ -29,6 +29,7 @@
 namespace research_scann {
 namespace asymmetric_hashing2 {
 
+// AH 模型类，包含中心集合、量化方案、投影等
 template <typename T>
 class Model {
  public:
@@ -37,39 +38,51 @@ class Model {
 
   using FloatT = FloatingTypeFor<T>;
 
+  // 从中心集合构造模型
   static StatusOr<unique_ptr<Model<T>>> FromCenters(
       std::vector<DenseDataset<FloatT>> centers,
       AsymmetricHasherConfig::QuantizationScheme quantization_scheme =
           AsymmetricHasherConfig::PRODUCT);
 
+  // 从序列化 proto 构造模型
   static StatusOr<unique_ptr<Model<T>>> FromProto(
       const CentersForAllSubspaces& proto,
       std::optional<ProjectionConfig> projection_config = std::nullopt);
 
+  // 模型序列化为 proto
   CentersForAllSubspaces ToProto() const;
 
+  // 获取所有中心集合
   ConstSpan<DenseDataset<FloatT>> centers() const { return centers_; }
 
+  // 获取转置后的中心数据（SIMD优化）
   ConstSpan<FloatT> block_transposed_centers() const {
     return block_transposed_centers_;
   }
 
+  // 每块聚类数
   uint32_t num_clusters_per_block() const { return num_clusters_per_block_; }
 
+  // 块数
   size_t num_blocks() const { return centers_.size(); }
 
+  // 量化方案类型
   AsymmetricHasherConfig::QuantizationScheme quantization_scheme() const {
     return quantization_scheme_;
   }
 
+  // 判断中心集合是否相等
   bool CentersEqual(const Model& rhs) const;
 
+  // 获取投影对象
   StatusOr<shared_ptr<const ChunkingProjection<T>>> GetProjection(
       const ProjectionConfig& projection_config) const;
 
+  // 设置投影对象
   void SetProjection(shared_ptr<const ChunkingProjection<T>> projection);
 
  private:
+  // 构造函数（私有，仅供静态工厂方法使用）
   explicit Model(
       std::vector<DenseDataset<FloatT>> centers,
       AsymmetricHasherConfig::QuantizationScheme quantization_scheme);
@@ -88,9 +101,12 @@ class Model {
   ProjectionConfig projection_config_;
 };
 
+// Model 模板类显式实例化声明
 SCANN_INSTANTIATE_TYPED_CLASS(extern, Model);
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann
 
 #endif

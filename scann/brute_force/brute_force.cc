@@ -38,26 +38,32 @@
 
 namespace research_scann {
 
+
+// BruteForceSearcher 构造函数，初始化距离度量、数据集和批量支持标志
 template <typename T>
 BruteForceSearcher<T>::BruteForceSearcher(
-    shared_ptr<const DistanceMeasure> distance,
-    shared_ptr<const TypedDataset<T>> dataset,
-    const int32_t default_pre_reordering_num_neighbors,
-    const float default_pre_reordering_epsilon)
-    : SingleMachineSearcherBase<T>(dataset,
-                                   default_pre_reordering_num_neighbors,
-                                   default_pre_reordering_epsilon),
-      distance_(distance),
-      supports_low_level_batching_(
-          (typeid(*distance) == typeid(DotProductDistance) ||
-           typeid(*distance) == typeid(CosineDistance) ||
-           typeid(*distance) == typeid(SquaredL2Distance)) &&
-          dataset->IsDense() && IsFloatingType<T>()) {}
+  shared_ptr<const DistanceMeasure> distance,
+  shared_ptr<const TypedDataset<T>> dataset,
+  const int32_t default_pre_reordering_num_neighbors,
+  const float default_pre_reordering_epsilon)
+  : SingleMachineSearcherBase<T>(dataset,
+                   default_pre_reordering_num_neighbors,
+                   default_pre_reordering_epsilon),
+    distance_(distance),
+    supports_low_level_batching_(
+      (typeid(*distance) == typeid(DotProductDistance) ||
+       typeid(*distance) == typeid(CosineDistance) ||
+       typeid(*distance) == typeid(SquaredL2Distance)) &&
+      dataset->IsDense() && IsFloatingType<T>()) {}
 
+
+// 析构函数
 template <typename T>
 BruteForceSearcher<T>::~BruteForceSearcher() {}
 
 template <typename T>
+
+// 启用Crowding功能（当前仅校验输入长度）
 Status BruteForceSearcher<T>::EnableCrowdingImpl(
     ConstSpan<int64_t> datapoint_index_to_crowding_attribute,
     ConstSpan<std::string> crowding_dimension_names) {
@@ -73,8 +79,12 @@ Status BruteForceSearcher<T>::EnableCrowdingImpl(
 
 namespace {
 
+
+// 空结构体，用于模板条件分支
 struct EmptyStruct {};
 
+
+// TopN结果收集接口，支持批量插入和无序结果输出
 template <typename ResultType>
 class TopNWrapperInterface {
  public:
@@ -84,6 +94,8 @@ class TopNWrapperInterface {
   virtual NNResultsVector TakeUnsorted() = 0;
 };
 
+
+// TopN收集器（非线程安全），支持最小距离过滤
 template <typename TopNBase, typename ResultType, bool kUseMinDistance>
 class TopNWrapper final : public TopNWrapperInterface<ResultType> {
  public:
@@ -120,6 +132,8 @@ class TopNWrapper final : public TopNWrapperInterface<ResultType> {
   std::conditional_t<kUseMinDistance, ResultType, EmptyStruct> min_distance_;
 };
 
+
+// TopN收集器（线程安全），支持最小距离过滤和批量插入
 template <typename TopNBase, typename ResultType, bool kUseMinDistance>
 class TopNWrapperThreadSafe final : public TopNWrapperInterface<ResultType> {
  public:
@@ -202,6 +216,8 @@ unique_ptr<TopNWrapperInterface<ResultType>> MakeTopNWrapper(
   }
 }
 
+
+// FastTopNeighbors包装器（非线程安全），用于高效TopK收集
 class FastTopNeighborsWrapper : public TopNWrapperInterface<float> {
  public:
   FastTopNeighborsWrapper(int32_t num_neighbors, float epsilon)
@@ -221,6 +237,8 @@ class FastTopNeighborsWrapper : public TopNWrapperInterface<float> {
   FastTopNeighbors<float> fast_top_neighbors_;
 };
 
+
+// FastTopNeighbors包装器（线程安全），用于高效TopK收集
 class FastTopNeighborsWrapperThreadSafe final
     : public TopNWrapperInterface<float> {
  public:
@@ -273,6 +291,8 @@ class FastTopNeighborsWrapperThreadSafe final
   mutable absl::Mutex mutex_;
 };
 
+
+// 构造非Crowding场景下的TopN收集器
 template <typename ResultType>
 unique_ptr<TopNWrapperInterface<ResultType>> MakeNonCrowdingTopN(
     const SearchParameters& params, float min_distance, bool thread_safe) {
@@ -297,6 +317,8 @@ unique_ptr<TopNWrapperInterface<ResultType>> MakeNonCrowdingTopN(
 
 }  // namespace
 
+
+// 非float/double类型不支持低层批量搜索，直接报错
 template <typename T>
 template <typename Float>
 enable_if_t<!IsSameAny<Float, float, double>(), void>
@@ -308,6 +330,8 @@ BruteForceSearcher<T>::FinishBatchedSearch(
                 "float/double types.  This codepath should be impossible.";
 }
 
+
+// float/double类型批量搜索实现，支持TopN收集和并发
 template <typename T>
 template <typename Float>
 enable_if_t<IsSameAny<Float, float, double>(), void>
@@ -328,6 +352,7 @@ BruteForceSearcher<T>::FinishBatchedSearch(
   vector<unique_ptr<TopNWrapperInterface<Float>>> top_ns(queries.size());
   for (size_t i : IndicesOf(params)) {
     if (params[i].pre_reordering_crowding_enabled()) {
+      // Crowding暂不支持
     } else {
       top_ns[i] =
           MakeNonCrowdingTopN<Float>(params[i], min_distance_, pool_.get());
@@ -349,6 +374,8 @@ BruteForceSearcher<T>::FinishBatchedSearch(
 }
 
 template <typename T>
+
+// float类型批量搜索的高效实现（无Crowding/MinDistance）
 void BruteForceSearcher<T>::FinishBatchedSearchSimple(
     const DenseDataset<float>& db, const DenseDataset<float>& queries,
     ConstSpan<SearchParameters> params,
@@ -366,6 +393,8 @@ void BruteForceSearcher<T>::FinishBatchedSearchSimple(
 }
 
 template <typename T>
+
+// 批量邻居搜索主入口，自动选择高效实现或回退
 Status BruteForceSearcher<T>::FindNeighborsBatchedImpl(
     const TypedDataset<T>& queries, ConstSpan<SearchParameters> params,
     MutableSpan<NNResultsVector> results) const {
@@ -389,6 +418,8 @@ Status BruteForceSearcher<T>::FindNeighborsBatchedImpl(
 }
 
 template <typename T>
+
+// 支持索引映射的批量邻居搜索（float类型专用）
 Status BruteForceSearcher<T>::FindNeighborsBatchedImpl(
     const TypedDataset<T>& queries, ConstSpan<SearchParameters> params,
     MutableSpan<FastTopNeighbors<float>*> results,
@@ -418,6 +449,8 @@ Status BruteForceSearcher<T>::FindNeighborsBatchedImpl(
 }
 
 template <typename T>
+
+// 单点邻居搜索主入口，支持MinDistance和Crowding（Crowding暂不支持）
 Status BruteForceSearcher<T>::FindNeighborsImpl(const DatapointPtr<T>& query,
                                                 const SearchParameters& params,
                                                 NNResultsVector* result) const {
@@ -437,6 +470,8 @@ Status BruteForceSearcher<T>::FindNeighborsImpl(const DatapointPtr<T>& query,
   return OkStatus();
 }
 
+
+// 单点邻居搜索内部实现，支持MinDistance和限制列表
 template <typename T>
 template <bool kUseMinDistance, typename TopN>
 Status BruteForceSearcher<T>::FindNeighborsInternal(
@@ -463,6 +498,7 @@ Status BruteForceSearcher<T>::FindNeighborsInternal(
         *down_cast<const DenseDataset<T>*>(this->dataset());
 
     if (params.restricts_enabled()) {
+      // 限制列表暂不支持
     } else {
       unique_ptr<float[]> distances_storage(new float[dataset.size()]);
       MutableSpan<float> distances(distances_storage.get(), dataset.size());
@@ -491,6 +527,8 @@ Status BruteForceSearcher<T>::FindNeighborsInternal(
   return OkStatus();
 }
 
+
+// 单点邻居搜索（支持稠密、稀疏、混合数据和限制列表）
 template <typename T>
 template <bool kUseMinDistance, typename AllowlistIterator, typename TopN>
 void BruteForceSearcher<T>::FindNeighborsOneToOneInternal(
@@ -557,6 +595,8 @@ void BruteForceSearcher<T>::FindNeighborsOneToOneInternal(
 }
 
 template <typename T>
+
+// 获取可变Mutator对象（用于动态数据集变更）
 StatusOr<typename SingleMachineSearcherBase<T>::Mutator*>
 BruteForceSearcher<T>::GetMutator() const {
   if (is_immutable_) {

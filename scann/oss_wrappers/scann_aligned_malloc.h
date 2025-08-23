@@ -19,7 +19,9 @@
 
 namespace research_scann {
 
+// 内存对齐分配接口，size为字节数，minimum_alignment为对齐字节数
 void *aligned_malloc(size_t size, size_t minimum_alignment);
+// 释放对齐分配的内存
 void aligned_free(void *aligned_memory);
 
 }  // namespace research_scann

@@ -30,6 +30,7 @@
 namespace research_scann {
 namespace asymmetric_hashing2 {
 
+// TrainingOptions 构造函数，初始化投影器，保存构造错误状态
 template <typename T>
 TrainingOptions<T>::TrainingOptions(
     const AsymmetricHasherConfig& config,
@@ -45,6 +46,7 @@ TrainingOptions<T>::TrainingOptions(
   }
 }
 
+// 校验训练参数合法性，包括聚类数、迭代次数、容忍度、采样等
 template <typename T>
 Status TrainingOptions<T>::Validate() const {
   SCANN_RETURN_IF_ERROR(constructor_error_);
@@ -80,6 +82,7 @@ Status TrainingOptions<T>::Validate() const {
                      this->config().max_sample_size(), "."));
   }
 
+  // 校验 Stacked Quantizer 配置参数
   if (this->config().has_stacked_quantizers_config()) {
     auto& sq = this->config().stacked_quantizers_config();
 
@@ -106,7 +109,10 @@ Status TrainingOptions<T>::Validate() const {
   return OkStatus();
 }
 
+// TrainingOptions 模板类显式实例化声明
 SCANN_INSTANTIATE_TYPED_CLASS(, TrainingOptions);
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann

@@ -23,6 +23,7 @@ namespace bits {
 
 #else
 
+// 查找非零数最低有效位（LSB）的位置
 int FindLSBSetNonZero(uint32_t n) {
   int rc = 31;
   for (int i = 4, shift = 1 << 4; i >= 0; --i) {
@@ -38,6 +39,7 @@ int FindLSBSetNonZero(uint32_t n) {
 
 #endif
 
+// 预计算表：每个字节的bit位数
 const char num_bits[] = {
     0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, 4,
     2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
@@ -51,6 +53,7 @@ const char num_bits[] = {
     4, 5, 5, 6, 5, 6, 6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
     4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8};
 
+// 统计内存区域m中所有bit为1的数量
 int Count(const void *m, int num_bytes) {
   int nbits = 0;
   const uint8_t *s = static_cast<const uint8_t *>(m);
@@ -58,6 +61,7 @@ int Count(const void *m, int num_bytes) {
   return nbits;
 }
 
+// 计算n的以2为底的对数上界
 int Log2Ceiling(uint32_t n) {
   int floor = Log2Floor(n);
   if ((n & (n - 1)) == 0)
@@ -66,6 +70,7 @@ int Log2Ceiling(uint32_t n) {
     return floor + 1;
 }
 
+// 计算64位整数n的以2为底的对数上界
 int Log2Ceiling64(uint64_t n) {
   int floor = Log2Floor64(n);
   if ((n & (n - 1)) == 0)

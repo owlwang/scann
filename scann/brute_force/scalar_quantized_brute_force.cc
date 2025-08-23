@@ -67,18 +67,21 @@ ScalarQuantizedBruteForceSearcher::ScalarQuantizedBruteForceSearcher(
                                        default_pre_reordering_epsilon),
       opts_(opts),
       distance_(distance) {
+  // 对原始数据集进行标量量化，得到量化后的数据集和每个维度的反乘数
   ScalarQuantizationResults quantization_results = ScalarQuantizeFloatDataset(
       *dataset, opts.multiplier_quantile, opts.noise_shaping_threshold);
   quantized_dataset_ = make_shared<DenseDataset<int8_t>>(
       std::move(quantization_results.quantized_dataset));
   inverse_multiplier_by_dimension_ = make_shared<vector<float>>(
       std::move(quantization_results.inverse_multiplier_by_dimension));
+  // 检查距离类型是否合法
   const auto distance_tag = distance->specially_optimized_distance_tag();
   auto distance_tag_status = CheckValidDistanceTag(distance_tag);
   if (!distance_tag_status.ok()) {
     LOG(FATAL) << distance_tag_status;
   }
 
+  // 如果距离类型为 SQUARED_L2，则预先计算所有数据点的 L2 范数
   if (distance_tag == DistanceMeasure::SQUARED_L2) {
     vector<float> squared_l2_norms(dataset->size());
     for (DatapointIndex i = 0; i < dataset->size(); ++i) {
@@ -94,13 +97,14 @@ ScalarQuantizedBruteForceSearcher::ScalarQuantizedBruteForceSearcher(
     shared_ptr<const DenseDataset<int8_t>> quantized_dataset,
     shared_ptr<const vector<float>> inverse_multiplier_by_dimension,
     int32_t default_num_neighbors, float default_epsilon)
-    : SingleMachineSearcherBase<float>(nullptr, default_num_neighbors,
-                                       default_epsilon),
-      squared_l2_norms_(std::move(squared_l2_norms)),
-      inverse_multiplier_by_dimension_(
-          std::move(inverse_multiplier_by_dimension)),
-      quantized_dataset_(std::move(quantized_dataset)),
-      distance_(distance) {
+  : SingleMachineSearcherBase<float>(nullptr, default_num_neighbors,
+                     default_epsilon),
+    squared_l2_norms_(std::move(squared_l2_norms)),
+    inverse_multiplier_by_dimension_(
+      std::move(inverse_multiplier_by_dimension)),
+    quantized_dataset_(std::move(quantized_dataset)),
+    distance_(distance) {
+  // 构造函数用于从已量化的数据集和参数直接构建搜索器
   QCHECK_OK(this->set_docids(quantized_dataset_->docids()));
 }
 
@@ -108,6 +112,7 @@ StatusOr<vector<float>>
 ScalarQuantizedBruteForceSearcher::ComputeSquaredL2NormsFromQuantizedDataset(
     const DenseDataset<int8_t>& quantized,
     absl::Span<const float> inverse_multipliers) {
+  // 从量化后的数据集和反乘数恢复每个数据点的 L2 范数
   if (quantized.dimensionality() != inverse_multipliers.size())
     return InvalidArgumentError(absl::StrCat(
         "The dimension of quantized dataset ", quantized.dimensionality(),
@@ -134,22 +139,23 @@ ScalarQuantizedBruteForceSearcher::
         shared_ptr<const vector<float>> inverse_multipliers,
         shared_ptr<vector<float>> squared_l2_norms,
         int32_t default_num_neighbors, float default_epsilon) {
+  // 工厂方法：从量化数据和参数创建搜索器，自动补全 L2 范数
   const auto distance_tag = distance->specially_optimized_distance_tag();
   SCANN_RETURN_IF_ERROR(CheckValidDistanceTag(distance_tag));
   if (distance_tag == DistanceMeasure::SQUARED_L2 && !quantized->empty() &&
-      (!squared_l2_norms || squared_l2_norms->empty())) {
-    LOG_FIRST_N(INFO, 1)
-        << "squared_l2_norms are not loaded, and they will be computed.";
-    SCANN_ASSIGN_OR_RETURN(auto squared_l2_norms_vec,
-                           ComputeSquaredL2NormsFromQuantizedDataset(
-                               *quantized, *inverse_multipliers));
-    squared_l2_norms =
-        make_shared<vector<float>>(std::move(squared_l2_norms_vec));
+    (!squared_l2_norms || squared_l2_norms->empty())) {
+  LOG_FIRST_N(INFO, 1)
+    << "squared_l2_norms are not loaded, and they will be computed.";
+  SCANN_ASSIGN_OR_RETURN(auto squared_l2_norms_vec,
+               ComputeSquaredL2NormsFromQuantizedDataset(
+                 *quantized, *inverse_multipliers));
+  squared_l2_norms =
+    make_shared<vector<float>>(std::move(squared_l2_norms_vec));
   }
 
   return std::make_unique<ScalarQuantizedBruteForceSearcher>(
-      distance, std::move(squared_l2_norms), std::move(quantized),
-      std::move(inverse_multipliers), default_num_neighbors, default_epsilon);
+    distance, std::move(squared_l2_norms), std::move(quantized),
+    std::move(inverse_multipliers), default_num_neighbors, default_epsilon);
 }
 
 StatusOr<unique_ptr<ScalarQuantizedBruteForceSearcher>>
@@ -158,38 +164,39 @@ ScalarQuantizedBruteForceSearcher::CreateWithFixedRange(
     shared_ptr<const DenseDataset<float>> dataset,
     ConstSpan<float> abs_thresholds_for_each_dimension,
     int32_t default_num_neighbors, float default_epsilon) {
+  // 工厂方法：通过每个维度的绝对阈值构造量化器和搜索器
   const auto distance_tag = distance->specially_optimized_distance_tag();
   SCANN_RETURN_IF_ERROR(CheckValidDistanceTag(distance_tag));
 
   DCHECK_EQ(dataset->dimensionality(),
-            abs_thresholds_for_each_dimension.size());
+      abs_thresholds_for_each_dimension.size());
   std::vector<float> multipliers(dataset->dimensionality());
 
   for (auto i : Seq(multipliers.size())) {
-    multipliers[i] = abs_thresholds_for_each_dimension[i] == 0.0f
-                         ? 1.0f
-                         : numeric_limits<int8_t>::max() /
-                               abs_thresholds_for_each_dimension[i];
+  multipliers[i] = abs_thresholds_for_each_dimension[i] == 0.0f
+             ? 1.0f
+             : numeric_limits<int8_t>::max() /
+                 abs_thresholds_for_each_dimension[i];
   }
   auto quantization_results = ScalarQuantizeFloatDatasetWithMultipliers(
-      *dataset, std::move(multipliers));
+    *dataset, std::move(multipliers));
 
   vector<float> squared_l2_norms;
   if (distance_tag == DistanceMeasure::SQUARED_L2 && !dataset->empty()) {
-    SCANN_ASSIGN_OR_RETURN(
-        squared_l2_norms,
-        ComputeSquaredL2NormsFromQuantizedDataset(
-            quantization_results.quantized_dataset,
-            quantization_results.inverse_multiplier_by_dimension));
+  SCANN_ASSIGN_OR_RETURN(
+    squared_l2_norms,
+    ComputeSquaredL2NormsFromQuantizedDataset(
+      quantization_results.quantized_dataset,
+      quantization_results.inverse_multiplier_by_dimension));
   }
 
   return std::make_unique<ScalarQuantizedBruteForceSearcher>(
-      distance, make_shared<vector<float>>(std::move(squared_l2_norms)),
-      make_shared<DenseDataset<int8_t>>(
-          std::move(quantization_results.quantized_dataset)),
-      make_shared<vector<float>>(
-          std::move(quantization_results.inverse_multiplier_by_dimension)),
-      default_num_neighbors, default_epsilon);
+    distance, make_shared<vector<float>>(std::move(squared_l2_norms)),
+    make_shared<DenseDataset<int8_t>>(
+      std::move(quantization_results.quantized_dataset)),
+    make_shared<vector<float>>(
+      std::move(quantization_results.inverse_multiplier_by_dimension)),
+    default_num_neighbors, default_epsilon);
 }
 
 StatusOr<const SingleMachineSearcherBase<float>*>
@@ -223,6 +230,7 @@ Status ScalarQuantizedBruteForceSearcher::EnableCrowdingImpl(
 Status ScalarQuantizedBruteForceSearcher::FindNeighborsImpl(
     const DatapointPtr<float>& query, const SearchParameters& params,
     NNResultsVector* result) const {
+  // 查找邻居主流程：量化查询、计算距离、后处理
   DCHECK(result);
   if (!query.IsDense()) {
     return InvalidArgumentError(
@@ -236,6 +244,7 @@ Status ScalarQuantizedBruteForceSearcher::FindNeighborsImpl(
   }
   DatapointPtr<float> preprocessed;
   unique_ptr<float[]> preproc_buf;
+  // 判断是否有预处理的量化查询（如树结构量化场景）
   const auto* tree_sq_preproc_query =
       params.searcher_specific_optional_parameters();
   if (tree_sq_preproc_query) {
@@ -252,6 +261,7 @@ Status ScalarQuantizedBruteForceSearcher::FindNeighborsImpl(
           "TreeScalarQuantizationPreprocessedQuery is not specified and "
           "inverse "
           "multipliers are empty.");
+    // 对查询向量进行量化预处理
     preproc_buf = PrepareForAsymmetricScalarQuantizedDotProduct(
         query, *inverse_multiplier_by_dimension_);
     preprocessed = MakeDatapointPtr(preproc_buf.get(), query.nonzero_entries());
@@ -260,14 +270,17 @@ Status ScalarQuantizedBruteForceSearcher::FindNeighborsImpl(
   const bool use_min_distance =
       min_distance_ > -numeric_limits<float>::infinity();
   if (params.restricts_enabled()) {
+    // 暂不支持 restricts
     return UnimplementedError("Restricts not supported.");
   } else {
+    // 计算所有点的 dot product 距离
     auto dot_products_ptr =
         static_cast<float*>(malloc(quantized_dataset_->size() * sizeof(float)));
     MutableSpan<float> dot_products(dot_products_ptr,
                                     quantized_dataset_->size());
     DenseDotProductDistanceOneToManyInt8Float(preprocessed, *quantized_dataset_,
                                               dot_products);
+    // 距离后处理（TopN筛选、距离类型转换等）
     Status status = use_min_distance ? PostprocessDistances<true, float>(
                                            query, params, dot_products, result)
                                      : PostprocessDistances<false, float>(
@@ -280,6 +293,7 @@ Status ScalarQuantizedBruteForceSearcher::FindNeighborsImpl(
 Status ScalarQuantizedBruteForceSearcher::PropagateDistances(
     const DatapointPtr<float>& query, const SearchParameters& params,
     NNResultsVector* result) const {
+  // 距离传播：将 dot product 距离转换为实际距离（支持三种距离类型）
   DatapointPtr<float> preprocessed;
   unique_ptr<float[]> preproc_buf;
   const auto* tree_sq_preproc_query =
@@ -307,14 +321,17 @@ Status ScalarQuantizedBruteForceSearcher::PropagateDistances(
                                                         result->size());
   DenseDotProductDistanceOneToManyInt8Float(preprocessed, *quantized_dataset_,
                                             dot_products);
+  // 根据距离类型进行转换
   switch (distance_->specially_optimized_distance_tag()) {
     case DistanceMeasure::DOT_PRODUCT:
+      // dot product 距离无需转换
       break;
     case DistanceMeasure::COSINE:
-
+      // cosine 距离需加 1.0f
       for (auto& elem : *result) elem.second += 1.0f;
       break;
     case DistanceMeasure::SQUARED_L2: {
+      // L2 距离需加上 query 和数据库的 L2 范数
       ConstSpan<float> squared_norms = *squared_l2_norms_;
       const float query_squared_l2_norm = SquaredL2Norm(query);
       for (auto& elem : *result)
@@ -334,6 +351,7 @@ template <bool kUseMinDistance, typename ResultElem>
 Status ScalarQuantizedBruteForceSearcher::PostprocessDistances(
     const DatapointPtr<float>& query, const SearchParameters& params,
     ConstSpan<ResultElem> dot_products, NNResultsVector* result) const {
+  // 距离后处理模板：根据距离类型转换 dot product 为实际距离
   switch (distance_->specially_optimized_distance_tag()) {
     case DistanceMeasure::DOT_PRODUCT:
       return PostprocessDistancesImpl<kUseMinDistance>(
@@ -341,7 +359,6 @@ Status ScalarQuantizedBruteForceSearcher::PostprocessDistances(
           [](float dot_product, DatapointIndex i) { return dot_product; },
           result);
     case DistanceMeasure::COSINE:
-
       return PostprocessDistancesImpl<kUseMinDistance>(
           query, params, dot_products,
           [](float dot_product, DatapointIndex i) {
@@ -373,9 +390,11 @@ Status ScalarQuantizedBruteForceSearcher::PostprocessDistancesImpl(
     const DatapointPtr<float>& query, const SearchParameters& params,
     ConstSpan<ResultElem> dot_products, DistanceFunctor distance_functor,
     NNResultsVector* result) const {
+  // TopN筛选与距离后处理，支持 min_distance 筛选
   const bool use_min_distance =
       min_distance_ > -numeric_limits<float>::infinity();
   if (params.pre_reordering_crowding_enabled()) {
+    // 暂不支持 crowding
     return FailedPreconditionError("Crowding is not supported.");
   } else {
     FastTopNeighbors<float> top_n(params.pre_reordering_num_neighbors(),
@@ -397,6 +416,7 @@ Status ScalarQuantizedBruteForceSearcher::PostprocessTopNImpl(
     const DatapointPtr<float>& query, const SearchParameters& params,
     ConstSpan<float> dot_products, DistanceFunctor distance_functor,
     TopN* top_n_ptr) const {
+  // TopN筛选实现：遍历所有距离，筛选出前 N 个最近邻
   DCHECK(!params.restricts_enabled());
   typename TopN::Mutator mutator;
   top_n_ptr->AcquireMutator(&mutator);
@@ -420,6 +440,7 @@ Status ScalarQuantizedBruteForceSearcher::PostprocessTopNImpl(
     const DatapointPtr<float>& query, const SearchParameters& params,
     ConstSpan<pair<DatapointIndex, float>> dot_products,
     DistanceFunctor distance_functor, TopN* top_n_ptr) const {
+  // TopN筛选实现（支持 restricts）：遍历所有距离，筛选出前 N 个最近邻
   DCHECK(params.restricts_enabled());
   typename TopN::Mutator mutator;
   top_n_ptr->AcquireMutator(&mutator);
@@ -443,11 +464,12 @@ StatusOr<unique_ptr<SearcherSpecificOptionalParameters>>
 TreeScalarQuantizationPreprocessedQueryCreator::
     CreateLeafSearcherOptionalParameters(
         const DatapointPtr<float>& query) const {
+  // 创建树结构量化查询的可选参数（预处理查询向量）
   auto preprocessed_query = PrepareForAsymmetricScalarQuantizedDotProduct(
-      query, inverse_multipliers_);
+    query, inverse_multipliers_);
   return unique_ptr<SearcherSpecificOptionalParameters>(
-      new TreeScalarQuantizationPreprocessedQuery(
-          std::move(preprocessed_query)));
+    new TreeScalarQuantizationPreprocessedQuery(
+      std::move(preprocessed_query)));
 }
 
 ConstSpan<float>
@@ -458,6 +480,7 @@ TreeScalarQuantizationPreprocessedQueryCreator::inverse_multipliers() const {
 
 StatusOr<SingleMachineSearcherBase<float>::Mutator*>
 ScalarQuantizedBruteForceSearcher::GetMutator() const {
+  // 获取 Mutator（用于支持动态数据集变更）
   if (!mutator_) {
     auto mutable_this = const_cast<ScalarQuantizedBruteForceSearcher*>(this);
     SCANN_ASSIGN_OR_RETURN(
@@ -470,19 +493,20 @@ ScalarQuantizedBruteForceSearcher::GetMutator() const {
 
 StatusOr<SingleMachineFactoryOptions>
 ScalarQuantizedBruteForceSearcher::ExtractSingleMachineFactoryOptions() {
+  // 提取工厂选项，生成预量化定点结构（用于加速重排序）
   SCANN_ASSIGN_OR_RETURN(
-      auto opts,
-      SingleMachineSearcherBase<float>::ExtractSingleMachineFactoryOptions());
+    auto opts,
+    SingleMachineSearcherBase<float>::ExtractSingleMachineFactoryOptions());
   if (opts.pre_quantized_fixed_point != nullptr) {
-    return InvalidArgumentError(
-        "pre_quantized_fixed_point already exists. Either disable reordering "
-        "or use float32 reordering, because scalar-quantized reordering with "
-        "scalar-quantized brute force provides no benefit.");
+  return InvalidArgumentError(
+    "pre_quantized_fixed_point already exists. Either disable reordering "
+    "or use float32 reordering, because scalar-quantized reordering with "
+    "scalar-quantized brute force provides no benefit.");
   }
   opts.pre_quantized_fixed_point =
-      make_shared<PreQuantizedFixedPoint>(CreatePreQuantizedFixedPoint(
-          *quantized_dataset_, *inverse_multiplier_by_dimension_,
-          *squared_l2_norms_, true));
+    make_shared<PreQuantizedFixedPoint>(CreatePreQuantizedFixedPoint(
+      *quantized_dataset_, *inverse_multiplier_by_dimension_,
+      *squared_l2_norms_, true));
   return opts;
 }
 

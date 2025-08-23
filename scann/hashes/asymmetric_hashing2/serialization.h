@@ -23,6 +23,7 @@
 namespace research_scann {
 namespace asymmetric_hashing2 {
 
+// 将 GFV 数据集序列化为 CentersForAllSubspaces proto，支持多子空间和量化方案
 template <typename T>
 CentersForAllSubspaces DatasetSpanToCentersProto(
     ConstSpan<DenseDataset<T>> dataset_span,
@@ -39,7 +40,9 @@ CentersForAllSubspaces DatasetSpanToCentersProto(
   return result;
 }
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann
 
 #endif

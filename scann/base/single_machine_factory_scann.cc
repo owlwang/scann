@@ -59,12 +59,14 @@ using std::dynamic_pointer_cast;
 namespace research_scann {
 namespace {
 
+// 构建普通 BruteForceSearcher（仅支持 float 数据）
 template <typename T>
 StatusOrSearcherUntyped BruteForceFactory(
     const BruteForceConfig& config, const shared_ptr<TypedDataset<T>>& dataset,
     const GenericSearchParameters& params) {
   SCANN_RET_CHECK(dataset);
 
+  // 量化和 bfloat16 只支持 float
   if (config.fixed_point().enabled() || config.bfloat16().enabled()) {
     return InvalidArgumentError(
         "Quantized brute force only works with float data.");
@@ -76,6 +78,7 @@ StatusOrSearcherUntyped BruteForceFactory(
   return result;
 }
 
+// 构建量化 BruteForceSearcher（int8 数据）
 StatusOrSearcherUntyped BruteForceFactory(const BruteForceConfig& config,
                                           const GenericSearchParameters& params,
                                           PreQuantizedFixedPoint* fixed_point) {
@@ -88,6 +91,7 @@ StatusOrSearcherUntyped BruteForceFactory(const BruteForceConfig& config,
       std::move(fixed_point->squared_l2_norm_by_datapoint);
   const auto& distance_type = typeid(*params.reordering_dist);
 
+  // 仅支持三种距离类型
   if (distance_type == typeid(const DotProductDistance) ||
       distance_type == typeid(const CosineDistance) ||
       distance_type == typeid(const SquaredL2Distance)) {
@@ -105,22 +109,25 @@ StatusOrSearcherUntyped BruteForceFactory(const BruteForceConfig& config,
   }
 }
 
+// 构建 bfloat16 BruteForceSearcher
 StatusOrSearcherUntyped BruteForceFactory(
-    const BruteForceConfig& config, const GenericSearchParameters& params,
-    shared_ptr<DenseDataset<int16_t>> bfloat16_dataset) {
+  const BruteForceConfig& config, const GenericSearchParameters& params,
+  shared_ptr<DenseDataset<int16_t>> bfloat16_dataset) {
   return make_unique<Bfloat16BruteForceSearcher>(
       params.reordering_dist, std::move(bfloat16_dataset),
       params.pre_reordering_num_neighbors, params.pre_reordering_epsilon,
       config.bfloat16().noise_shaping_threshold());
 }
 
+// float 专用 BruteForceSearcher 工厂，支持量化和 bfloat16
 template <>
 StatusOrSearcherUntyped BruteForceFactory<float>(
-    const BruteForceConfig& config,
-    const shared_ptr<TypedDataset<float>>& dataset,
-    const GenericSearchParameters& params) {
+  const BruteForceConfig& config,
+  const shared_ptr<TypedDataset<float>>& dataset,
+  const GenericSearchParameters& params) {
   SCANN_RET_CHECK(dataset);
 
+  // 量化分支
   if (config.fixed_point().enabled()) {
     const auto tag =
         params.pre_reordering_dist->specially_optimized_distance_tag();
@@ -150,6 +157,7 @@ StatusOrSearcherUntyped BruteForceFactory<float>(
         params.pre_reordering_epsilon, opts);
     result->set_min_distance(params.min_distance);
     return result;
+  // bfloat16 分支
   } else if (config.bfloat16().enabled()) {
     auto dense = std::dynamic_pointer_cast<DenseDataset<float>>(dataset);
     if (!dense) {
@@ -160,6 +168,7 @@ StatusOrSearcherUntyped BruteForceFactory<float>(
         params.pre_reordering_dist, dense, params.pre_reordering_num_neighbors,
         params.pre_reordering_epsilon,
         config.bfloat16().noise_shaping_threshold());
+  // 普通 float 分支
   } else {
     auto result = make_unique<BruteForceSearcher<float>>(
         params.pre_reordering_dist, dataset,
@@ -169,6 +178,7 @@ StatusOrSearcherUntyped BruteForceFactory<float>(
   }
 }
 
+// 构建哈希型搜索器（目前仅支持 AsymmetricHash）
 template <typename T>
 StatusOrSearcherUntyped HashFactory(shared_ptr<TypedDataset<T>> dataset,
                                     const ScannConfig& config,
@@ -193,6 +203,7 @@ StatusOrSearcherUntyped HashFactory(shared_ptr<TypedDataset<T>> dataset,
   }
 }
 
+// 叶子搜索器工厂，分派不同类型的单机搜索器
 class ScannLeafSearcher {
  public:
   template <typename T>
@@ -200,16 +211,19 @@ class ScannLeafSearcher {
       const ScannConfig& config, const shared_ptr<TypedDataset<T>>& dataset,
       const GenericSearchParameters& params,
       SingleMachineFactoryOptions* opts) {
+    // 只允许配置一种单机搜索类型
     if (internal::NumQueryDatabaseSearchTypesConfigured(config) != 1) {
       return InvalidArgumentError(
           "Exactly one single-machine search type must be configured in "
           "ScannConfig if using SingleMachineFactory.");
     }
 
+    // 分区型搜索器
     if (config.has_partitioning()) {
       return TreeXHybridFactory<T>(
           config, dataset, params,
           &internal::SingleMachineFactoryLeafSearcherScann<T>, opts);
+    // 暴力型搜索器
     } else if (config.has_brute_force()) {
       if (std::is_same_v<T, float> &&
           config.brute_force().fixed_point().enabled() &&
@@ -224,6 +238,7 @@ class ScannLeafSearcher {
       } else {
         return BruteForceFactory(config.brute_force(), dataset, params);
       }
+    // 哈希型搜索器
     } else if (config.has_hash()) {
       return HashFactory<T>(dataset, config, opts, params);
     } else {
@@ -234,6 +249,7 @@ class ScannLeafSearcher {
 
 }  // namespace
 
+// 单机搜索器工厂主入口（类型安全）
 template <typename T>
 StatusOr<unique_ptr<SingleMachineSearcherBase<T>>> SingleMachineFactoryScann(
     const ScannConfig& config, shared_ptr<TypedDataset<T>> dataset,
@@ -245,6 +261,7 @@ StatusOr<unique_ptr<SingleMachineSearcherBase<T>>> SingleMachineFactoryScann(
       unique_cast_unsafe<SingleMachineSearcherBase<T>>(std::move(searcher))};
 }
 
+// 单机搜索器工厂主入口（无类型）
 StatusOrSearcherUntyped SingleMachineFactoryUntypedScann(
     const ScannConfig& config, shared_ptr<Dataset> dataset,
     SingleMachineFactoryOptions opts) {

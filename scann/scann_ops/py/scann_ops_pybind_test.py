@@ -24,8 +24,10 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 
+## ScaNN pybind功能测试主类，覆盖序列化、查找、批量、树结构、量化等
 class ScannTest(parameterized.TestCase):
 
+  # 测试类初始化，生成默认数据集
   @classmethod
   def setUpClass(cls):
     super().setUpClass()
@@ -33,6 +35,7 @@ class ScannTest(parameterized.TestCase):
     cls.default_dims = 20
     cls.ds = np.random.rand(1234, cls.default_dims).astype(np.float32)
 
+  # 验证序列化与反序列化一致性
   def verify_serialization(self,
                            searcher,
                            n_dims,
@@ -55,9 +58,11 @@ class ScannTest(parameterized.TestCase):
         np.testing.assert_array_equal(idx_new, idx)
         np.testing.assert_allclose(dis_new, dis, rtol=1e-6)
 
+  # 数据归一化辅助函数
   def normalize(self, dataset):
     return dataset / np.linalg.norm(dataset, axis=1)[:, np.newaxis]
 
+  # 测试BruteForce查找与距离一致性
   def test_brute_force(self):
 
     def ground_truth(dataset, query, k):
@@ -84,6 +89,7 @@ class ScannTest(parameterized.TestCase):
       np.testing.assert_allclose(dis, selected_distances, rtol=1e-6)
       np.testing.assert_allclose(dis, gt_dis, rtol=1e-6)
 
+  # 测试批量查找接口与结果一致性
   def test_batching(self):
     k = 10
     s = (
@@ -111,6 +117,7 @@ class ScannTest(parameterized.TestCase):
       soar=[(True, 2.0), (False, 2.0), (True, 1.2)],
       upper_tree=[True, False],
   )
+  # 测试树结构+AH查找，覆盖量化、重排序、SOAR等参数组合
   def test_tree_ah(self, dist, quantize_tree, reorder, soar, upper_tree):
     if soar and dist != "dot_product":
       return
@@ -152,6 +159,7 @@ class ScannTest(parameterized.TestCase):
         builder.build(), self.default_dims, 5, relative_path=True)
 
   @parameterized.parameters(("squared_l2",), ("dot_product",))
+  # 测试纯AH查找与序列化
   def test_pure_ah(self, dist):
     s = scann_ops_pybind.builder(self.ds, 10, dist).score_ah(2).build()
     self.verify_serialization(s, self.default_dims, 5)
@@ -162,6 +170,7 @@ class ScannTest(parameterized.TestCase):
       quantize=[True, False],
       soar=[True, False],
   )
+  # 测试树结构+BruteForce查找与序列化
   def test_tree_brute_force(self, dist, quantize, soar):
     if soar and dist != "dot_product":
       return
@@ -172,6 +181,7 @@ class ScannTest(parameterized.TestCase):
     self.verify_serialization(s, self.default_dims, 5)
     self.verify_serialization(s, self.default_dims, 5, relative_path=True)
 
+  # 测试极端分区数下的序列化兼容性
   def test_empty_partitions(self):
     # self.ds has 1234 points, so with 200 partitions, k-means fails to work
     # well and some partitions are empty; make sure this serializes properly.
@@ -188,6 +198,7 @@ class ScannTest(parameterized.TestCase):
           scann_builder.ReorderType.BFLOAT16,
       ],
   )
+  # 测试BruteForce量化查找与序列化
   def test_brute_force_quantized(self, dist, quant):
     s = (
         scann_ops_pybind.builder(self.ds, 10,
@@ -195,6 +206,7 @@ class ScannTest(parameterized.TestCase):
     self.verify_serialization(s, self.default_dims, 5)
     self.verify_serialization(s, self.default_dims, 5, relative_path=True)
 
+  # 测试查找结果shape正确性
   def test_shapes(self):
     k = 10
     # first look at AH searcher with reordering
@@ -229,6 +241,7 @@ class ScannTest(parameterized.TestCase):
     self.assertLen(s2.search(q)[0], k)
     self.assertLen(s2.search(q, final_num_neighbors=20)[0], 20)
 
+  # 测试squared_l2距离查找与批量查找一致性
   def test_squared_l2(self):
 
     def ground_truth(dataset, query, k):
@@ -250,6 +263,7 @@ class ScannTest(parameterized.TestCase):
       selected_distances = np.sum(np.square(ds[idx_row] - query), axis=1)
       np.testing.assert_allclose(dis_row, selected_distances, rtol=1e-5)
 
+  # 测试并行批量查找一致性
   def test_parallel_batching(self):
     n_dims = 50
     k = 10
@@ -264,6 +278,7 @@ class ScannTest(parameterized.TestCase):
     np.testing.assert_allclose(dis, dis_parallel, rtol=1e-5)
 
   # make sure spherical partitioning proto is valid and doesn't crash
+  # 测试球面分区kmeans配置兼容性
   def test_spherical_kmeans(self):
     k = 10
     s = (
@@ -271,6 +286,7 @@ class ScannTest(parameterized.TestCase):
             30, 3, spherical=True).score_ah(2).build())
     self.verify_serialization(s, self.default_dims, 20)
 
+  # 测试TRUNCATE降维功能与序列化
   def test_truncation(self):
     reduction_dim = 12
     s = (
@@ -283,6 +299,7 @@ class ScannTest(parameterized.TestCase):
       self.assertEqual(hashed.shape[1], reduction_dim // 2)
     self.verify_serialization(s, self.default_dims, 10)
 
+  # 测试PCA降维功能与序列化
   def test_pca(self):
     k = 10
     s = (
@@ -297,5 +314,6 @@ class ScannTest(parameterized.TestCase):
     self.verify_serialization(s, self.default_dims, 10)
 
 
+## 主入口，运行所有测试用例
 if __name__ == "__main__":
   absltest.main()

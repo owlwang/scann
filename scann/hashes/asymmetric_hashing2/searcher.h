@@ -46,6 +46,7 @@ class TreeAHHybridResidual;
 
 namespace asymmetric_hashing2 {
 
+// Searcher 配置选项，包含查找器、索引器、查找表类型、量化参数等
 template <typename T>
 class SearcherOptions {
  public:
@@ -111,8 +112,10 @@ class SearcherOptions {
   friend class Searcher;
 };
 
+// LUT16 查找表每块聚类数常量
 inline constexpr int kNumClustersPerBlockForLUT16 = 16;
 
+// Searcher 基类，定义主要查找接口、查找表管理、批量查找等
 template <typename T>
 class SearcherBase : public SingleMachineSearcherBase<T> {
  public:
@@ -168,6 +171,7 @@ class SearcherBase : public SingleMachineSearcherBase<T> {
   friend class ::research_scann::TreeAHHybridResidual;
 };
 
+// Searcher 主类，支持近邻查找、批量查找、变异器、工厂选项等
 template <typename T>
 class Searcher final : public SearcherBase<T> {
  public:
@@ -187,6 +191,7 @@ class Searcher final : public SearcherBase<T> {
       UntypedSingleMachineSearcherBase::PrecomputedMutationArtifacts;
   using MutationOptions = UntypedSingleMachineSearcherBase::MutationOptions;
 
+  // Mutator 变异器类，支持增删改查、预计算哈希、LUT16打包等
   class Mutator : public SingleMachineSearcherBase<T>::Mutator {
    public:
     using MutateBaseOptions =
@@ -288,8 +293,9 @@ class Searcher final : public SearcherBase<T> {
   friend class ::research_scann::TreeAHHybridResidual;
 };
 
+// 查找表预计算参数类
 class AsymmetricHashingOptionalParameters
-    : public SearcherSpecificOptionalParameters {
+  : public SearcherSpecificOptionalParameters {
  public:
   explicit AsymmetricHashingOptionalParameters(
       LookupTable precomputed_lookup_table)
@@ -308,9 +314,10 @@ class AsymmetricHashingOptionalParameters
   friend class Searcher;
 };
 
+// 预计算查找表参数创建器
 template <typename T>
 class PrecomputedAsymmetricLookupTableCreator final
-    : public LeafSearcherOptionalParameterCreator<T> {
+  : public LeafSearcherOptionalParameterCreator<T> {
  public:
   explicit PrecomputedAsymmetricLookupTableCreator(
       std::shared_ptr<const AsymmetricQueryer<T>> queryer,
@@ -334,12 +341,15 @@ class PrecomputedAsymmetricLookupTableCreator final
       fixed_point_lut_conversion_options_;
 };
 
+// Searcher 相关模板类显式实例化声明
 SCANN_INSTANTIATE_TYPED_CLASS(extern, SearcherOptions);
 SCANN_INSTANTIATE_TYPED_CLASS(extern, SearcherBase);
 SCANN_INSTANTIATE_TYPED_CLASS(extern, Searcher);
 SCANN_INSTANTIATE_TYPED_CLASS(extern, PrecomputedAsymmetricLookupTableCreator);
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann
 
 #endif

@@ -36,10 +36,11 @@ namespace asymmetric_hashing2 {
 
 using QuantizationScheme = AsymmetricHasherConfig::QuantizationScheme;
 
+// 从中心集合构造模型，校验每块中心数量一致
 template <typename T>
 StatusOrPtr<Model<T>> Model<T>::FromCenters(
-    vector<DenseDataset<FloatT>> centers,
-    QuantizationScheme quantization_scheme) {
+  vector<DenseDataset<FloatT>> centers,
+  QuantizationScheme quantization_scheme) {
   if (centers.empty()) {
     return InvalidArgumentError("Cannot construct a Model from empty centers.");
   } else if (centers[0].empty() || centers[0].size() > 256) {
@@ -62,10 +63,11 @@ StatusOrPtr<Model<T>> Model<T>::FromCenters(
       new Model<T>(std::move(centers), quantization_scheme));
 }
 
+// 从序列化 proto 构造模型，支持投影配置
 template <typename T>
 StatusOr<unique_ptr<Model<T>>> Model<T>::FromProto(
-    const CentersForAllSubspaces& proto,
-    std::optional<ProjectionConfig> projection_config) {
+  const CentersForAllSubspaces& proto,
+  std::optional<ProjectionConfig> projection_config) {
   const size_t num_blocks = proto.subspace_centers_size();
   if (num_blocks == 0) {
     return InvalidArgumentError(
@@ -99,6 +101,7 @@ StatusOr<unique_ptr<Model<T>>> Model<T>::FromProto(
   return result;
 }
 
+// 模型序列化为 proto，包含中心和投影
 template <typename T>
 CentersForAllSubspaces Model<T>::ToProto() const {
   CentersForAllSubspaces result;
@@ -124,9 +127,10 @@ CentersForAllSubspaces Model<T>::ToProto() const {
   return result;
 }
 
+// 获取投影对象，若无则根据配置创建
 template <typename T>
 StatusOr<shared_ptr<const ChunkingProjection<T>>> Model<T>::GetProjection(
-    const ProjectionConfig& projection_config) const {
+  const ProjectionConfig& projection_config) const {
   if (projection_ == nullptr) {
     SCANN_ASSIGN_OR_RETURN(auto unique_projection,
                            ChunkingProjectionFactory<T>(projection_config));
@@ -135,12 +139,14 @@ StatusOr<shared_ptr<const ChunkingProjection<T>>> Model<T>::GetProjection(
   return projection_;
 }
 
+// 设置投影对象
 template <typename T>
 void Model<T>::SetProjection(
-    shared_ptr<const ChunkingProjection<T>> projection) {
+  shared_ptr<const ChunkingProjection<T>> projection) {
   projection_ = std::move(projection);
 }
 
+// 模型构造函数，支持中心转置优化（SIMD加速）
 template <typename T>
 Model<T>::Model(vector<DenseDataset<FloatT>> centers,
                 QuantizationScheme quantization_scheme)
@@ -191,6 +197,7 @@ Model<T>::Model(vector<DenseDataset<FloatT>> centers,
   block_transposed_centers_ = std::move(block_transposed_centers);
 }
 
+// 判断模型中心是否相等
 template <typename T>
 bool Model<T>::CentersEqual(const Model& rhs) const {
   if (centers_.size() != rhs.centers_.size()) return false;
@@ -208,7 +215,10 @@ bool Model<T>::CentersEqual(const Model& rhs) const {
   return true;
 }
 
+// Model 模板类显式实例化声明
 SCANN_INSTANTIATE_TYPED_CLASS(, Model);
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann

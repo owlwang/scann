@@ -58,6 +58,8 @@ class SingleMachineSearcherBase;
 
 template <typename T>
 class BruteForceSearcher;
+// 本文件定义了 ScaNN 单机搜索器的基础类，包括无类型和模板类型的搜索器基类。
+// 主要用于高效最近邻搜索，支持数据集、哈希数据集、重排序、拥挤度等功能。
 
 template <typename T>
 void RetrainAndReindexFixup(UntypedSingleMachineSearcherBase* result,

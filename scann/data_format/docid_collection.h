@@ -33,6 +33,7 @@
 
 namespace research_scann {
 
+// VariableLengthDocidCollection：可变长度 docid 集合实现，支持追加、查找、删除、内存管理等
 class VariableLengthDocidCollection final : public DocidCollectionInterface {
  public:
   VariableLengthDocidCollection() = default;
@@ -42,6 +43,7 @@ class VariableLengthDocidCollection final : public DocidCollectionInterface {
   VariableLengthDocidCollection& operator=(
       const VariableLengthDocidCollection& rhs);
 
+  // 创建指定数量空 docid 的集合
   static VariableLengthDocidCollection CreateWithEmptyDocids(
       DatapointIndex n_elements) {
     VariableLengthDocidCollection result;
@@ -53,6 +55,7 @@ class VariableLengthDocidCollection final : public DocidCollectionInterface {
   VariableLengthDocidCollection& operator=(
       VariableLengthDocidCollection&& rhs) = default;
 
+  // 追加 docid 到集合
   Status Append(string_view docid) final;
   size_t size() const final { return size_; }
   bool empty() const final { return size_ == 0; }
@@ -64,13 +67,16 @@ class VariableLengthDocidCollection final : public DocidCollectionInterface {
         new VariableLengthDocidCollection(*this));
   }
 
+  // 判断集合是否全为空 docid
   bool all_empty() const { return !impl_ && size_ > 0; }
 
+  // 获取指定索引的 docid
   string_view Get(size_t i) const final {
     DCHECK_LT(i, size_);
     return (all_empty()) ? "" : impl_->Get(i);
   }
 
+  // 批量获取 docid，支持自定义 getter/setter
   void MultiGet(size_t num_docids, DpIdxGetter docid_idx_getter,
                 StringSetter docid_setter) const final {
     if (!all_empty()) {
@@ -85,12 +91,15 @@ class VariableLengthDocidCollection final : public DocidCollectionInterface {
     }
   }
 
+  // 集合容量
   size_t capacity() const final { return impl_ ? impl_->capacity() : 0; }
 
+  // 集合占用内存
   size_t MemoryUsage() const final {
     return sizeof(this) + (impl_ ? (impl_->MemoryUsage()) : 0);
   }
 
+  // 预分配集合空间
   void Reserve(DatapointIndex n_elements) final;
 
   class Mutator : public DocidCollectionInterface::Mutator {
@@ -101,15 +110,22 @@ class VariableLengthDocidCollection final : public DocidCollectionInterface {
     Mutator& operator=(const Mutator&) = delete;
 
     ~Mutator() final {}
-    Status AddDatapoint(string_view docid) final;
-    bool LookupDatapointIndex(string_view docid,
-                              DatapointIndex* index) const final;
-    void LookupDatapointIndices(size_t num_docids, DocidGetter docid_getter,
-                                LookupCallback callback) const final;
-    Status RemoveDatapoint(string_view docid) final;
-    Status RemoveDatapoint(DatapointIndex index) final;
-    void Reserve(size_t size) final;
-    string_view ImplName() const final { return docid_lookup_->ImplName(); }
+  // 追加 docid
+  Status AddDatapoint(string_view docid) final;
+  // 查找 docid 对应的数据点索引
+  bool LookupDatapointIndex(string_view docid,
+                DatapointIndex* index) const final;
+  // 批量查找 docid 索引
+  void LookupDatapointIndices(size_t num_docids, DocidGetter docid_getter,
+                LookupCallback callback) const final;
+  // 移除指定 docid
+  Status RemoveDatapoint(string_view docid) final;
+  // 按索引移除 docid
+  Status RemoveDatapoint(DatapointIndex index) final;
+  // 预分配空间
+  void Reserve(size_t size) final;
+  // 返回实现名称
+  string_view ImplName() const final { return docid_lookup_->ImplName(); }
 
    private:
     explicit Mutator(VariableLengthDocidCollection* docids,
@@ -144,6 +160,7 @@ class FixedLengthDocidCollection final : public DocidCollectionInterface {
   FixedLengthDocidCollection& operator=(FixedLengthDocidCollection&& rhs) =
       default;
 
+  // 构造函数，指定 docid 固定长度
   explicit FixedLengthDocidCollection(size_t length) : docid_length_(length) {}
   ~FixedLengthDocidCollection() final = default;
 
@@ -158,6 +175,7 @@ class FixedLengthDocidCollection final : public DocidCollectionInterface {
     return docids;
   }
 
+  // 追加 docid 到集合
   Status Append(string_view docid) final;
 
   size_t size() const final { return size_; }
@@ -177,18 +195,23 @@ class FixedLengthDocidCollection final : public DocidCollectionInterface {
     mutator_ = nullptr;
   }
 
+  // 获取指定索引的 docid
   string_view Get(size_t i) const final {
     DCHECK_LT(i, size_);
     return string_view(&arr_[i * docid_length_], docid_length_);
   }
 
+  // 批量获取 docid，支持自定义 getter/setter
   void MultiGet(size_t num_docids, DpIdxGetter docid_idx_getter,
                 StringSetter docid_setter) const final;
 
+  // 集合容量
   size_t capacity() const final { return arr_.capacity() / docid_length_; }
 
+  // 集合占用内存
   size_t MemoryUsage() const final { return arr_.capacity() + sizeof(*this); }
 
+  // 预分配集合空间
   void Reserve(DatapointIndex n_elements) final;
 
   class Mutator : public DocidCollectionInterface::Mutator {
@@ -199,15 +222,22 @@ class FixedLengthDocidCollection final : public DocidCollectionInterface {
     Mutator& operator=(const Mutator&) = delete;
 
     ~Mutator() final {}
-    Status AddDatapoint(string_view docid) final;
-    bool LookupDatapointIndex(string_view docid,
-                              DatapointIndex* index) const final;
-    void LookupDatapointIndices(size_t num_docids, DocidGetter docid_getter,
-                                LookupCallback callback) const final;
-    Status RemoveDatapoint(string_view docid) final;
-    Status RemoveDatapoint(DatapointIndex index) final;
-    void Reserve(size_t size) final;
-    string_view ImplName() const final { return docid_lookup_->ImplName(); }
+  // 追加 docid
+  Status AddDatapoint(string_view docid) final;
+  // 查找 docid 对应的数据点索引
+  bool LookupDatapointIndex(string_view docid,
+                DatapointIndex* index) const final;
+  // 批量查找 docid 索引
+  void LookupDatapointIndices(size_t num_docids, DocidGetter docid_getter,
+                LookupCallback callback) const final;
+  // 移除指定 docid
+  Status RemoveDatapoint(string_view docid) final;
+  // 按索引移除 docid
+  Status RemoveDatapoint(DatapointIndex index) final;
+  // 预分配空间
+  void Reserve(size_t size) final;
+  // 返回实现名称
+  string_view ImplName() const final { return docid_lookup_->ImplName(); }
 
    private:
     static constexpr int kGrowthFactor = 2;

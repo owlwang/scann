@@ -24,12 +24,16 @@
 
 namespace research_scann {
 
+// AVQ累加器类：用于分区中心加权计算，支持eta参数
 class AvqAccumulator {
  public:
+  // 构造函数：指定维度和eta参数
   AvqAccumulator(size_t dimensionality, float eta);
 
+  // 累加一批向量，更新加权和与矩阵
   AvqAccumulator& AddVectors(ConstSpan<float> vecs);
 
+  // 计算加权中心
   EVectorXf GetCenter();
 
  private:
@@ -45,13 +49,15 @@ class AvqAccumulator {
   FRIEND_TEST(AVQTest, TestReduction);
 };
 
+// 计算分区的AVQ加权中心
 inline EVectorXf ComputeAVQPartition(ConstSpan<float> partition,
                                      size_t dimensionality, float eta) {
   return AvqAccumulator(dimensionality, eta).AddVectors(partition).GetCenter();
 }
 
+// 计算重标定因子（分子/分母），用于分区中心归一化
 std::pair<double, double> ComputeRescaleFraction(
-    ConstSpan<float> partition_center, ConstSpan<float> partition_data);
+  ConstSpan<float> partition_center, ConstSpan<float> partition_data);
 
 }  // namespace research_scann
 

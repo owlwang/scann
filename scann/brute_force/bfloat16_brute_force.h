@@ -29,49 +29,63 @@
 
 namespace research_scann {
 
+// Bfloat16 精度暴力搜索器：用于高效地在 bfloat16 量化空间进行暴力最近邻搜索
 class Bfloat16BruteForceSearcher final
     : public SingleMachineSearcherBase<float> {
  public:
+  // 构造函数：通过原始 float 数据集和距离度量初始化 bfloat16 搜索器
   Bfloat16BruteForceSearcher(shared_ptr<const DistanceMeasure> distance,
                              shared_ptr<const DenseDataset<float>> dataset,
                              int32_t default_num_neighbors,
                              float default_epsilon,
                              float noise_shaping_threshold = NAN);
 
+  // 构造函数：直接通过 bfloat16 数据集初始化
   Bfloat16BruteForceSearcher(
       shared_ptr<const DistanceMeasure> distance,
       shared_ptr<const DenseDataset<int16_t>> bfloat16_dataset,
       int32_t default_num_neighbors, float default_epsilon,
       float noise_shaping_threshold = NAN);
 
+  // 创建通用暴力搜索器（兼容接口）
   StatusOr<const SingleMachineSearcherBase<float>*> CreateBruteForceSearcher(
       const DistanceMeasureConfig& distance_config,
       unique_ptr<SingleMachineSearcherBase<float>>* storage) const final;
 
+  // 析构函数
   ~Bfloat16BruteForceSearcher() override = default;
 
+  // 是否支持 crowding（多样性约束）
   bool supports_crowding() const final { return true; }
 
   class Mutator : public SingleMachineSearcherBase<float>::Mutator {
    public:
+    // Mutator：支持数据集的动态增删改
     using PrecomputedMutationArtifacts =
         UntypedSingleMachineSearcherBase::PrecomputedMutationArtifacts;
     using MutateBaseOptions =
         UntypedSingleMachineSearcherBase::UntypedMutator::MutateBaseOptions;
 
+    // 创建 Mutator 实例
     static StatusOr<unique_ptr<Mutator>> Create(
         Bfloat16BruteForceSearcher* searcher);
     Mutator(const Mutator&) = delete;
     Mutator& operator=(const Mutator&) = delete;
     ~Mutator() final = default;
 
+    // 获取指定索引的数据点
     StatusOr<Datapoint<float>> GetDatapoint(DatapointIndex i) const final;
+    // 增加数据点
     StatusOr<DatapointIndex> AddDatapoint(const DatapointPtr<float>& dptr,
                                           string_view docid,
                                           const MutationOptions&) final;
+    // 通过 docid 删除数据点
     Status RemoveDatapoint(string_view docid) final;
+    // 预分配空间
     void Reserve(size_t size) final;
+    // 通过索引删除数据点
     Status RemoveDatapoint(DatapointIndex index) final;
+    // 更新数据点（通过 docid 或索引）
     StatusOr<DatapointIndex> UpdateDatapoint(const DatapointPtr<float>& dptr,
                                              string_view docid,
                                              const MutationOptions&) final;
@@ -80,10 +94,12 @@ class Bfloat16BruteForceSearcher final
                                              const MutationOptions&) final;
 
    private:
+    // 构造函数（私有）：持有量化器和数据集变更器
     Mutator(Bfloat16BruteForceSearcher* searcher,
             TypedDataset<int16_t>::Mutator* quantized_dataset_mutator)
         : searcher_(searcher),
           quantized_dataset_mutator_(quantized_dataset_mutator) {}
+    // 查找 docid 对应索引
     StatusOr<DatapointIndex> LookupDatapointIndexOrError(
         string_view docid) const;
 
@@ -91,30 +107,39 @@ class Bfloat16BruteForceSearcher final
     TypedDataset<int16_t>::Mutator* quantized_dataset_mutator_;
   };
 
-  StatusOr<typename SingleMachineSearcherBase<float>::Mutator*> GetMutator()
-      const final;
+    // 获取 Mutator（用于支持动态数据集变更）
+    StatusOr<typename SingleMachineSearcherBase<float>::Mutator*> GetMutator()
+            const final;
 
-  StatusOr<SingleMachineFactoryOptions> ExtractSingleMachineFactoryOptions()
-      override;
+    // 提取工厂选项（用于重排序加速等）
+    StatusOr<SingleMachineFactoryOptions> ExtractSingleMachineFactoryOptions()
+            override;
 
- protected:
-  Status FindNeighborsImpl(const DatapointPtr<float>& query,
-                           const SearchParameters& params,
-                           NNResultsVector* result) const final;
+protected:
+    // 实际查找邻居的实现（bfloat16 距离计算）
+    Status FindNeighborsImpl(const DatapointPtr<float>& query,
+                                                     const SearchParameters& params,
+                                                     NNResultsVector* result) const final;
 
-  Status EnableCrowdingImpl(
-      ConstSpan<int64_t> datapoint_index_to_crowding_attribute,
-      ConstSpan<std::string> crowding_dimension_names) final;
+    // crowding 属性使能实现
+    Status EnableCrowdingImpl(
+            ConstSpan<int64_t> datapoint_index_to_crowding_attribute,
+            ConstSpan<std::string> crowding_dimension_names) final;
 
- private:
-  bool impl_needs_dataset() const override { return false; }
+private:
+    // 是否需要原始数据集（bfloat16 暴力搜索不需要）
+    bool impl_needs_dataset() const override { return false; }
 
-  bool is_dot_product_;
-  shared_ptr<const DenseDataset<int16_t>> bfloat16_dataset_;
+    // 是否为 dot product 距离类型
+    bool is_dot_product_;
+    // bfloat16 量化后的数据集
+    shared_ptr<const DenseDataset<int16_t>> bfloat16_dataset_;
 
-  const float noise_shaping_threshold_ = NAN;
+    // 噪声整形阈值
+    const float noise_shaping_threshold_ = NAN;
 
-  mutable unique_ptr<Mutator> mutator_ = nullptr;
+    // Mutator（支持动态数据集变更）
+    mutable unique_ptr<Mutator> mutator_ = nullptr;
 };
 
 }  // namespace research_scann

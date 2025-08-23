@@ -29,13 +29,16 @@ from scann.scann_ops.py import scann_builder
 from scann.scann_ops.py import scann_ops_pybind_backcompat
 
 
+## 文件打开辅助函数，兼容pickle序列化
 def _open(path, mode):
   return open(path, mode)
 
 
+## ScaNN搜索器的pybind包装类，提供更友好的Python接口
 class ScannSearcher(object):
   """Wrapper class around pybind module that provides a cleaner interface."""
 
+  # 初始化，支持docid映射
   def __init__(self, searcher, docids=None):
     self.searcher = searcher
     # Simple docid mapping.
@@ -45,6 +48,7 @@ class ScannSearcher(object):
       if len(docids) != len(self.docid_to_id):
         raise ValueError("Duplicates found in docids.")
 
+  # 单查询向量的近邻查找，支持参数覆盖
   def search(
       self,
       q,
@@ -59,6 +63,7 @@ class ScannSearcher(object):
     idx = idx if self.docids is None else [self.docids[j] for j in idx]
     return idx, dist
 
+  # 多查询向量批量查找
   def search_batched(
       self,
       queries,
@@ -84,6 +89,7 @@ class ScannSearcher(object):
         if self.docids is None else [[self.docids[j] for j in i] for i in idx])
     return idx, dist
 
+  # 多线程并行批量查找
   def search_batched_parallel(
       self,
       queries,
@@ -104,6 +110,7 @@ class ScannSearcher(object):
         if self.docids is None else [[self.docids[j] for j in i] for i in idx])
     return idx, dist
 
+  # 序列化ScaNN搜索器及docids
   def serialize(self, artifacts_dir, relative_path=False):
     self.searcher.serialize(artifacts_dir, relative_path)
     docids_fn = os.path.join(artifacts_dir, "scann_docids.pkl")
@@ -111,12 +118,15 @@ class ScannSearcher(object):
     if self.docids is not None:
       pkl.dump(self.docids, _open(docids_fn, "wb"))
 
+  # 获取健康统计信息
   def get_health_stats(self):
     return self.searcher.get_health_stats()
 
+  # 初始化健康统计信息
   def initialize_health_stats(self):
     return self.searcher.initialize_health_stats()
 
+  # 插入或更新数据点
   def upsert(self, docids, database, batch_size=1):
     """Insert or update datapoints into the searcher."""
     if not isinstance(docids, list):
@@ -142,6 +152,7 @@ class ScannSearcher(object):
         self.docid_to_id[docid] = len(self.docids) - 1
     _ = self.searcher.upsert(indices, database, batch_size)
 
+  # 删除指定docid的数据点
   def delete(self, docids):
     """Delete datapoints from searcher."""
     if not isinstance(docids, list):
@@ -161,6 +172,7 @@ class ScannSearcher(object):
       self.docid_to_id.pop(docid)
     _ = self.searcher.delete(indices)
 
+  # 重新平衡索引（全量重训练）
   def rebalance(self, config=None):
     """Rebalances the searcher."""
     # TODO(guorq): currently, this performs a full retrain based on the initial
@@ -168,25 +180,32 @@ class ScannSearcher(object):
     config = "" if config is None else config
     return self.searcher.rebalance(config)
 
+  # 预分配数据点空间
   def reserve(self, num_datapoints):
     return self.searcher.reserve(num_datapoints)
 
+  # 返回当前数据点数量
   def size(self):
     return self.searcher.size()
 
+  # 设置搜索线程数
   def set_num_threads(self, num_threads):
     self.searcher.set_num_threads(num_threads)
 
+  # 返回当前配置
   def config(self):
     """Returns the config."""
     return self.searcher.config()
 
 
+## ScaNN构建器，兼容pybind，支持autopilot参数
 def builder(db, num_neighbors, distance_measure):
   """pybind analogue of builder() in scann_ops.py; see docstring there."""
 
+  # 内部ScannBuilder子类，支持autopilot重写
   class ScannBuilder(scann_builder.ScannBuilder):
 
+  # 创建配置，支持autopilot自动参数推荐
     def create_config(self):
       """Create a config with autopilot rewrite without actually building the searcher."""
       config = super().create_config()
@@ -195,6 +214,7 @@ def builder(db, num_neighbors, distance_measure):
             config, self.db.shape[0], self.db.shape[1])
       return config
 
+  # 构建searcher的lambda工厂
   def builder_lambda(db, config, training_threads, **kwargs):
     return create_searcher(db, config, training_threads, **kwargs)
 
@@ -202,6 +222,7 @@ def builder(db, num_neighbors, distance_measure):
                       distance_measure).set_builder_lambda(builder_lambda)
 
 
+## 创建ScaNN搜索器对象，包装ScannNumpy
 def create_searcher(db,
                     scann_config,
                     training_threads=0,
@@ -226,6 +247,7 @@ def create_searcher(db,
       docids=docids)
 
 
+## 从目录加载ScaNN搜索器，兼容老版本资产
 def load_searcher(artifacts_dir, assets_backcompat_shim=True):
   """Loads searcher assets from artifacts_dir and returns a ScaNN searcher."""
   is_dir = os.path.isdir(artifacts_dir)

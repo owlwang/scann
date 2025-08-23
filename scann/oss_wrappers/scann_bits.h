@@ -23,16 +23,14 @@
 namespace research_scann {
 namespace bits {
 
+
+// x86/GCC平台: 使用内建函数查找最低有效位（LSB）
 #if (defined(__i386__) || defined(__x86_64__)) && defined(__GNUC__)
-
 inline int FindLSBSetNonZero(uint32_t n) { return __builtin_ctz(n); }
-
 inline int FindLSBSetNonZero64(uint64_t n) { return __builtin_ctzll(n); }
-
 #else
-
+// 其他平台: 提供自定义实现
 int FindLSBSetNonZero(uint32_t n);
-
 inline int FindLSBSetNonZero64(uint64_t n) {
   const uint32_t bottombits = static_cast<uint32_t>(n);
   if (bottombits == 0) {
@@ -41,21 +39,26 @@ inline int FindLSBSetNonZero64(uint64_t n) {
     return FindLSBSetNonZero(bottombits);
   }
 }
-
 #endif
 
+// 预计算表：每个字节的bit位数
 extern const char num_bits[];
 
+// 统计内存区域m中所有bit为1的数量
 int Count(const void *m, int num_bytes);
 
+
+// 计算以2为底的对数下界
 inline int Log2Floor(uint32_t n) { return absl::bit_width(n) - 1; }
 inline int Log2FloorNonZero(uint32_t n) { return Log2Floor(n); }
 inline int Log2Floor64(uint64_t n) { return absl::bit_width(n) - 1; }
 inline int Log2FloorNonZero64(uint64_t n) { return Log2Floor64(n); }
 
+// 查找最高有效位（MSB）的位置
 inline int FindMSBSetNonZero(uint32_t n) { return Log2FloorNonZero(n); }
 inline int FindMSBSetNonZero64(uint64_t n) { return Log2FloorNonZero64(n); }
 
+// 计算以2为底的对数上界
 int Log2Ceiling(uint32_t n);
 int Log2Ceiling64(uint64_t n);
 

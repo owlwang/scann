@@ -23,8 +23,10 @@ import tensorflow as tf
 from scann.scann_ops.py import scann_ops
 
 
+## 图模式下的ScaNN序列化与查找测试
 class TestGraphMode(tf.test.TestCase):
 
+  # 序列化与反序列化一致性测试
   def serialization_tester(self, np_dataset, np_queries, searcher_lambda):
     with tempfile.TemporaryDirectory() as tmpdirname:
       g1 = tf.compat.v1.Graph()
@@ -72,6 +74,7 @@ class TestGraphMode(tf.test.TestCase):
         self.assertTrue(np.array_equal(orig_dis, np_dis))
         self.assertTrue(np.array_equal(orig_idx, np_idx))
 
+  # AH序列化测试
   def test_ah_serialization(self):
     np_dataset = np.random.rand(10000, 32)
     np_queries = np.random.rand(100, 32)
@@ -81,6 +84,7 @@ class TestGraphMode(tf.test.TestCase):
 
     self.serialization_tester(np_dataset, np_queries, searcher_maker)
 
+  # Tree+AH序列化测试
   def test_tree_ah_serialization(self):
     np_dataset = np.random.rand(10000, 32)
     np_queries = np.random.rand(100, 32)
@@ -91,6 +95,7 @@ class TestGraphMode(tf.test.TestCase):
 
     self.serialization_tester(np_dataset, np_queries, searcher_maker)
 
+  # Tree+BruteForce序列化测试
   def test_tree_brute_force_serialization(self):
     np_dataset = np.random.rand(10000, 32)
     np_queries = np.random.rand(100, 32)
@@ -101,6 +106,7 @@ class TestGraphMode(tf.test.TestCase):
 
     self.serialization_tester(np_dataset, np_queries, searcher_maker)
 
+  # BruteForce INT8序列化测试
   def test_brute_force_int8_serialization(self):
     np_dataset = np.random.rand(10000, 32)
     np_queries = np.random.rand(100, 32)
@@ -111,6 +117,7 @@ class TestGraphMode(tf.test.TestCase):
 
     self.serialization_tester(np_dataset, np_queries, searcher_maker)
 
+  # AH+重排序序列化测试
   def test_reordering_serialization(self):
     np_dataset = np.random.rand(10000, 32)
     np_queries = np.random.rand(100, 32)
@@ -122,13 +129,16 @@ class TestGraphMode(tf.test.TestCase):
     self.serialization_tester(np_dataset, np_queries, searcher_maker)
 
 
+## Eager模式下的ScaNN查找与一致性测试
 class TestEagerMode(tf.test.TestCase):
 
+  # Numpy实现的暴力点积查找
   def numpy_brute_force_dp(self, dataset, queries, k):
     product = np.matmul(queries, np.transpose(dataset))
     indices = (-product).argsort()[:, :k]
     return np.sort(product)[:, :-k - 1:-1], indices
 
+  # BruteForce查找与结果一致性测试
   def test_brute_force(self):
     np_dataset = np.random.rand(10000, 32)
     np_queries = np.random.rand(100, 32)
@@ -156,6 +166,7 @@ class TestEagerMode(tf.test.TestCase):
     self.assertAllClose(distances3, np_distances2[0])
     self.assertAllEqual(indices3, np_indices2[0])
 
+  # 并行批量查找一致性测试
   def test_parallel(self):
     rng = np.random.default_rng(518)
     np_dataset = rng.random((10000, 32))
@@ -172,6 +183,7 @@ class TestEagerMode(tf.test.TestCase):
     self.assertAllClose(dis, dis_parallel)
     self.assertAllEqual(idx, idx_parallel)
 
+  # 重排序查找结果shape测试
   def test_reordering_shapes(self):
     np_dataset = np.random.rand(10000, 32)
     np_queries = np.random.rand(100, 32)
@@ -219,5 +231,6 @@ class TestEagerMode(tf.test.TestCase):
     self.assertAllEqual((6,), indices.shape)
 
 
+## 主入口，运行所有测试用例
 if __name__ == "__main__":
   tf.test.main()

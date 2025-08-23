@@ -29,18 +29,22 @@
 
 namespace research_scann {
 
+// 将 GFV 转换为指定类型的向量
 template <typename VecT>
 Status GfvValuesToVector(const GenericFeatureVector& gfv, VecT* result);
 
+// 将 GFV 二值类型打包为 uint8 向量
 inline Status GfvValuesToVectorBitPacked(const GenericFeatureVector& gfv,
                                          std::vector<uint8_t>* result);
 
+// 将二值打包数据解包为 GFV
 template <typename IntT>
 void UnpackBinaryToInt64(ConstSpan<IntT> packed, size_t num_dimensions,
                          GenericFeatureVector* gfv);
 
 namespace internal {
 
+// 检查类型转换是否安全，防止溢出和无效值
 template <typename DestT, typename SrcT>
 Status SafeForStaticCast(SrcT val) {
   if (IsFloatingType<SrcT>() && !std::isfinite(val)) {
@@ -60,6 +64,7 @@ Status SafeForStaticCast(SrcT val) {
   return OkStatus();
 }
 
+// 批量追加数据到向量，逐个检查类型安全
 template <typename DestT, typename SrcT, typename VecT>
 Status AppendRangeToVector(ConstSpan<SrcT> span, VecT* result) {
   DCHECK(result);
@@ -70,9 +75,10 @@ Status AppendRangeToVector(ConstSpan<SrcT> span, VecT* result) {
   return OkStatus();
 }
 
+// GFV 二值类型打包为 uint8 向量（仅支持 0/1）
 template <typename T, typename VecT>
 enable_if_t<IsUint8<T>(), Status> AppendGfvValuesToVectorBitPacked(
-    const GenericFeatureVector& gfv, VecT* result) {
+  const GenericFeatureVector& gfv, VecT* result) {
   if (gfv.feature_type() != GenericFeatureVector::BINARY) {
     return InvalidArgumentError(
         "gfv.feature_type must be BINARY for "
@@ -111,13 +117,15 @@ enable_if_t<IsUint8<T>(), Status> AppendGfvValuesToVectorBitPacked(
   return OkStatus();
 }
 
+// GFV 非 uint8 类型直接批量追加
 template <typename T, typename VecT>
 enable_if_t<!IsUint8<T>(), Status> AppendGfvValuesToVectorBitPacked(
-    const GenericFeatureVector& gfv, VecT* result) {
+  const GenericFeatureVector& gfv, VecT* result) {
   return AppendRangeToVector<T>(MakeConstSpan(gfv.feature_value_int64()),
                                 result);
 }
 
+// GFV 按类型追加到向量，支持 int64/float/double/binary
 template <typename T, typename VecT>
 Status AppendGfvValuesToVector(const GenericFeatureVector& gfv, VecT* result) {
   DCHECK(result);
@@ -148,6 +156,8 @@ Status AppendGfvValuesToVector(const GenericFeatureVector& gfv, VecT* result) {
 }  // namespace internal
 
 template <typename VecT>
+// GFV 转换为向量主入口，自动分配空间并调用类型追加
+template <typename VecT>
 Status GfvValuesToVector(const GenericFeatureVector& gfv, VecT* result) {
   DCHECK(result);
   SCANN_ASSIGN_OR_RETURN(size_t to_reserve, GetGfvVectorSize(gfv));
@@ -158,12 +168,16 @@ Status GfvValuesToVector(const GenericFeatureVector& gfv, VecT* result) {
 }
 
 Status GfvValuesToVectorBitPacked(const GenericFeatureVector& gfv,
+// GFV 二值类型打包为 uint8 向量主入口
+Status GfvValuesToVectorBitPacked(const GenericFeatureVector& gfv,
                                   std::vector<uint8_t>* result) {
   DCHECK(result);
   result->clear();
   return internal::AppendGfvValuesToVectorBitPacked<uint8_t>(gfv, result);
 }
 
+template <typename IntT>
+// 二值打包数据解包为 GFV，逐位展开为 int64
 template <typename IntT>
 void UnpackBinaryToInt64(ConstSpan<IntT> packed, size_t num_dimensions,
                          GenericFeatureVector* gfv) {
@@ -182,6 +196,8 @@ void UnpackBinaryToInt64(ConstSpan<IntT> packed, size_t num_dimensions,
   }
 }
 
+template <>
+// float/double 类型不支持二值打包解包，直接报错
 template <>
 inline void UnpackBinaryToInt64<float>(ConstSpan<float> packed,
                                        size_t num_dimensions,

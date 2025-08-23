@@ -22,6 +22,8 @@ namespace research_scann {
 
 using absl::StrCat;
 
+
+// 校验搜索参数合法性，包含重排序相关参数
 Status SearchParameters::Validate(bool reordering_enabled) const {
   if (pre_reordering_num_neighbors() <= 0) {
     return InvalidArgumentError(
@@ -66,6 +68,8 @@ Status SearchParameters::Validate(bool reordering_enabled) const {
   return OkStatus();
 }
 
+
+// 用默认参数填充未指定的搜索参数
 void SearchParameters::SetUnspecifiedParametersFrom(
     const SearchParameters& defaults) {
   DCHECK(this);

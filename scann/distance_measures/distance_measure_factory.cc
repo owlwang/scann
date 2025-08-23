@@ -16,16 +16,22 @@
 
 namespace research_scann {
 
+// 根据配置 proto 创建距离度量对象，支持多种距离类型
 StatusOr<shared_ptr<DistanceMeasure>> GetDistanceMeasure(
     const DistanceMeasureConfig& config) {
+  // 检查配置是否指定了距离类型
   if (config.distance_measure().empty()) {
+    // 未指定距离类型，返回参数错误
     return InvalidArgumentError(
         "Empty DistanceMeasureConfig proto! Must specify distance_measure.");
   }
+  // 根据距离类型名称分派到具体实现
   return GetDistanceMeasure(config.distance_measure());
 }
 
+// 根据距离类型名称创建对应的距离度量对象
 StatusOr<shared_ptr<DistanceMeasure>> GetDistanceMeasure(string_view name) {
+  // 针对每种支持的距离类型，分派到具体实现类
   if (name == "DotProductDistance")
     return shared_ptr<DistanceMeasure>(new DotProductDistance());
   if (name == "BinaryDotProductDistance")
@@ -56,7 +62,9 @@ StatusOr<shared_ptr<DistanceMeasure>> GetDistanceMeasure(string_view name) {
     return shared_ptr<DistanceMeasure>(new BinaryHammingDistance());
   if (name == "NonzeroIntersectDistance")
     return shared_ptr<DistanceMeasure>(new NonzeroIntersectDistance());
+  // 未知距离类型，返回参数错误
   return InvalidArgumentError("Invalid distance_measure: '%s'", name);
 }
 
+// research_scann 命名空间结束
 }  // namespace research_scann

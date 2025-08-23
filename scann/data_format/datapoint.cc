@@ -31,6 +31,7 @@
 
 namespace research_scann {
 
+// 判断稀疏数据点在指定维度是否有非零值
 template <typename T>
 bool DatapointPtr<T>::HasNonzero(DimensionIndex dimension_index) const {
   DCHECK_LT(dimension_index, dimensionality());
@@ -41,6 +42,7 @@ bool DatapointPtr<T>::HasNonzero(DimensionIndex dimension_index) const {
   return found < indices_ + nonzero_entries_ && *found == dimension_index;
 }
 
+// 获取指定维度的元素值，支持稠密/稀疏/二值
 template <typename T>
 T DatapointPtr<T>::GetElement(DimensionIndex dimension_index) const {
   DCHECK_LT(dimension_index, dimensionality());
@@ -62,6 +64,7 @@ T DatapointPtr<T>::GetElement(DimensionIndex dimension_index) const {
   }
 }
 
+// 将稀疏数据点的索引和元数据写入 GFV
 template <typename T>
 void DatapointPtr<T>::ToGfvIndicesAndMetadata(GenericFeatureVector* gfv) const {
   if (IsSparse()) {
@@ -73,6 +76,7 @@ void DatapointPtr<T>::ToGfvIndicesAndMetadata(GenericFeatureVector* gfv) const {
   }
 }
 
+// 将 Datapoint 转换为 GFV（带归一化类型）
 template <typename T>
 void Datapoint<T>::ToGfv(GenericFeatureVector& result) const {
   ToPtr().ToGfv(result);
@@ -80,6 +84,7 @@ void Datapoint<T>::ToGfv(GenericFeatureVector& result) const {
       static_cast<GenericFeatureVector::FeatureNorm>(normalization()));
 }
 
+// 从 GFV 反序列化为 Datapoint
 template <typename T>
 Status Datapoint<T>::FromGfv(const GenericFeatureVector& gfv) {
   auto status = FromGfvImpl(gfv);
@@ -87,6 +92,7 @@ Status Datapoint<T>::FromGfv(const GenericFeatureVector& gfv) {
   return status;
 }
 
+// GFV 反序列化实现，支持稀疏/稠密/二值/索引排序/去重/零值移除
 template <typename T>
 Status Datapoint<T>::FromGfvImpl(const GenericFeatureVector& gfv) {
   clear();
@@ -149,6 +155,7 @@ Status Datapoint<T>::FromGfvImpl(const GenericFeatureVector& gfv) {
   return OkStatus();
 }
 
+// 将二值数据点转换为普通数值型（填充 1 或解包）
 template <typename T>
 void Datapoint<T>::MakeNotBinary() {
   auto* mut_values = mutable_values();
@@ -166,6 +173,7 @@ void Datapoint<T>::MakeNotBinary() {
   }
 }
 
+// 判断索引是否已排序
 template <typename T>
 bool Datapoint<T>::IndicesSorted() const {
   for (size_t i = 1; i < indices().size(); ++i) {
@@ -175,6 +183,7 @@ bool Datapoint<T>::IndicesSorted() const {
   return true;
 }
 
+// 对索引和值进行排序，保证稀疏数据点合法
 template <typename T>
 void Datapoint<T>::SortIndices() {
   if (indices().empty()) return;
@@ -190,6 +199,7 @@ void Datapoint<T>::SortIndices() {
   }
 }
 
+// 移除稀疏数据点中的显式零值
 template <typename T>
 void Datapoint<T>::RemoveExplicitZeroesFromSparseVector() {
   if (indices_.empty() || values_.empty()) {

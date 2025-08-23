@@ -33,6 +33,7 @@
 namespace research_scann {
 namespace asymmetric_hashing2 {
 
+// AH 训练参数基类，包含量化距离、配置、权重等
 class TrainingOptionsBase {
  public:
   explicit TrainingOptionsBase(
@@ -61,6 +62,7 @@ class TrainingOptionsBase {
   vector<float> weights_;
 };
 
+// 类型化训练参数类，包含投影、预处理函数等
 template <typename T>
 class TrainingOptionsTyped : public TrainingOptionsBase {
  public:
@@ -77,6 +79,7 @@ class TrainingOptionsTyped : public TrainingOptionsBase {
     return projector_;
   }
 
+  // 预处理函数类型定义
   using PreprocessingFunction =
       std::function<StatusOr<Datapoint<T>>(const DatapointPtr<T>&)>;
   void set_preprocessing_function(PreprocessingFunction fn) {
@@ -92,9 +95,12 @@ class TrainingOptionsTyped : public TrainingOptionsBase {
   PreprocessingFunction preprocessing_function_;
 };
 
+// TrainingOptionsTyped 模板类显式实例化声明
 SCANN_INSTANTIATE_TYPED_CLASS(extern, TrainingOptionsTyped);
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann
 
 #endif

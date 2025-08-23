@@ -32,8 +32,10 @@
 
 namespace research_scann {
 
-template <typename Searcher, typename InDataType,
 
+// 用于收集分区健康统计信息的工具类
+// 支持分区大小、量化误差、失衡度等统计，便于分析索引分布和性能
+template <typename Searcher, typename InDataType,
           typename InAccamulationType = InDataType,
           typename Partitioner =
               KMeansTreeLikePartitioner<typename Searcher::DataType>>
@@ -43,24 +45,26 @@ class HealthStatsCollector {
   using AccamulationType = InAccamulationType;
   using HealthStats = typename Searcher::HealthStats;
 
+  // 初始化统计器，收集分区信息
   Status Initialize(const Searcher& searcher);
 
+  // 获取当前健康统计结果
   absl::StatusOr<HealthStats> GetHealthStats();
 
+  // 是否启用统计
   bool IsEnabled() const { return is_enabled_; }
 
+  // 分区数量
   uint32_t NumTokens() const { return sizes_by_token_.size(); }
 
+  // 分区操作相关接口
   void AddPartition();
-
   void SwapPartitions(int32_t token1, int32_t token2);
-
   void RemoveLastPartition();
-
   void Resize(size_t n);
-
   void Reserve(size_t n);
 
+  // 添加/移除分区内数据点的统计
   void AddStats(int32_t token, absl::Span<const DatapointIndex> datapoints) {
     AddStats(absl::MakeConstSpan({token}), datapoints);
   }
@@ -75,62 +79,72 @@ class HealthStatsCollector {
   void SubtractStats(const Tokens& tokens,
                      absl::Span<const DatapointIndex> datapoints);
 
+  // 移除整个分区统计
   void SubtractPartition(int32_t token);
 
+  // 更新分区中心点（如聚类中心变化时）
   void UpdatePartitionCentroid(int32_t token,
                                DatapointPtr<DataType> new_centroid,
                                DatapointPtr<DataType> old_centroid);
 
  private:
+  // 初始化分区中心点
   Status InitializeCentroids(const Searcher& searcher);
 
+  // 统计操作类型
   enum class Op {
     Add,
     Subtract,
   };
+  // 批量更新分区统计
   template <typename Tokens>
   void StatsUpdate(const Tokens& tokens, Op op,
                    absl::Span<const DatapointIndex> datapoints);
 
+  // 单数据点统计增/减
   void Add(int32_t token, DatapointPtr<DataType> dp_ptr,
            DatapointPtr<DataType> center);
   void Add(int32_t token);
-
   void Subtract(int32_t token, DatapointPtr<DataType> dp_ptr,
                 DatapointPtr<DataType> center);
   void Subtract(int32_t token);
 
+  // 统计向量增量更新
   static void AddDelta(Datapoint<InAccamulationType>& dst,
                        DatapointPtr<DataType> new_dp,
                        DatapointPtr<DataType> old_dp, int times = 1);
 
+  // 计算分区失衡度
   void ComputeAvgRelativeImbalance();
 
+  // 获取数据点指针
   DatapointPtr<DataType> GetDatapointPtr(
       DatapointIndex i, Datapoint<typename Searcher::DataType>* storage) const {
     return searcher_->GetDatapointPtr(i);
   }
 
+  // 统计相关成员变量
   const Searcher* searcher_ = nullptr;
   InAccamulationType sum_squared_quantization_error_ = 0;
   double partition_weighted_avg_relative_imbalance_ = 0;
   double partition_avg_relative_positive_imbalance_ = 0;
   uint64_t sum_partition_sizes_ = 0;
 
-  std::vector<Datapoint<InAccamulationType>> sum_qe_by_token_;
-
-  std::vector<uint32_t> sizes_by_token_;
-
-  std::vector<InAccamulationType> squared_quantization_error_by_token_;
-  std::shared_ptr<Partitioner> centroids_;
+  std::vector<Datapoint<InAccamulationType>> sum_qe_by_token_; // 每个分区的量化误差和
+  std::vector<uint32_t> sizes_by_token_; // 每个分区的大小
+  std::vector<InAccamulationType> squared_quantization_error_by_token_; // 每个分区的量化误差
+  std::shared_ptr<Partitioner> centroids_; // 分区中心点
   bool is_enabled_ = false;
 
+  // 数据类型是否一致
   static constexpr bool kCentroidAndDPAreSameType =
       std::is_same_v<DataType, typename Searcher::DataType>;
 };
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 初始化分区统计信息，包括分区大小、量化误差等
 Status HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                             Partitioner>::Initialize(const Searcher& searcher) {
   *this = HealthStatsCollector();
@@ -138,6 +152,7 @@ Status HealthStatsCollector<Searcher, InDataType, InAccamulationType,
   searcher_ = &searcher;
   SCANN_RETURN_IF_ERROR(InitializeCentroids(searcher));
 
+  // 获取每个分区的数据点索引
   ConstSpan<std::vector<DatapointIndex>> datapoints_by_token =
       searcher.datapoints_by_token();
   Reserve(datapoints_by_token.size());
@@ -148,6 +163,7 @@ Status HealthStatsCollector<Searcher, InDataType, InAccamulationType,
     squared_quantization_error_by_token_.emplace_back();
   }
 
+  // 统计每个分区的量化误差和
   const auto* dataset = searcher.dataset();
   if constexpr (kCentroidAndDPAreSameType) {
     if (dataset && !dataset->empty()) {
@@ -166,8 +182,8 @@ Status HealthStatsCollector<Searcher, InDataType, InAccamulationType,
           DatapointPtr<DataType> centroid = centroids[token];
           InAccamulationType v = 0;
           for (auto dp_idx : dps) {
-            v += SquaredL2DistanceBetween(ds[dp_idx], centroid);
-            AddDelta(sum_dims, ds[dp_idx], centroids[token]);
+            v += SquaredL2DistanceBetween(ds[dp_idx], centroid); // 计算量化误差
+            AddDelta(sum_dims, ds[dp_idx], centroids[token]);    // 统计误差向量
           }
           squared_quantization_error_by_token_[token] = v;
           sum_qe_by_token_[token] = std::move(sum_dims);
@@ -179,34 +195,39 @@ Status HealthStatsCollector<Searcher, InDataType, InAccamulationType,
     }
   }
 
+  // 计算分区失衡度
   ComputeAvgRelativeImbalance();
   return OkStatus();
 }
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 获取当前分区健康统计结果，包括平均量化误差、分区失衡度等
 absl::StatusOr<typename HealthStatsCollector<
-    Searcher, InDataType, InAccamulationType, Partitioner>::HealthStats>
+  Searcher, InDataType, InAccamulationType, Partitioner>::HealthStats>
 HealthStatsCollector<Searcher, InDataType, InAccamulationType,
-                     Partitioner>::GetHealthStats() {
+           Partitioner>::GetHealthStats() {
   HealthStats r;
   if (sum_partition_sizes_ > 0) {
-    r.avg_quantization_error =
-        sqrt(sum_squared_quantization_error_ / sum_partition_sizes_);
+  r.avg_quantization_error =
+    sqrt(sum_squared_quantization_error_ / sum_partition_sizes_);
   }
 
   r.sum_partition_sizes = sum_partition_sizes_;
 
   ComputeAvgRelativeImbalance();
   r.partition_weighted_avg_relative_imbalance =
-      partition_weighted_avg_relative_imbalance_;
+    partition_weighted_avg_relative_imbalance_;
   r.partition_avg_relative_positive_imbalance =
-      partition_avg_relative_positive_imbalance_;
+    partition_avg_relative_positive_imbalance_;
   return r;
 }
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 新增一个分区（用于动态分区场景）
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::AddPartition() {
   if (!is_enabled_) return;
@@ -217,6 +238,8 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 交换两个分区的统计信息
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::SwapPartitions(int32_t token1,
                                                        int32_t token2) {
@@ -229,6 +252,8 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 移除最后一个分区
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::RemoveLastPartition() {
   if (!is_enabled_) return;
@@ -239,6 +264,8 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 调整分区数量
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::Resize(size_t n) {
   if (!is_enabled_) return;
@@ -249,6 +276,8 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 预分配分区空间
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::Reserve(size_t n) {
   if (!is_enabled_) return;
@@ -259,6 +288,8 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 批量添加分区统计（如批量插入数据点）
 template <typename Tokens>
 void HealthStatsCollector<
     Searcher, InDataType, InAccamulationType,
@@ -270,6 +301,8 @@ void HealthStatsCollector<
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 批量移除分区统计（如批量删除数据点）
 template <typename Tokens>
 void HealthStatsCollector<
     Searcher, InDataType, InAccamulationType,
@@ -281,6 +314,8 @@ void HealthStatsCollector<
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 移除指定分区的所有统计信息
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::SubtractPartition(int32_t token) {
   if (!is_enabled_) return;
@@ -294,6 +329,10 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
   squared_quantization_error_by_token_[token] = 0;
 }
 
+template <typename Searcher, typename InDataType, typename InAccamulationType,
+          typename Partitioner>
+
+// 更新分区中心点后，重新计算分区统计信息
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
 void HealthStatsCollector<
@@ -327,21 +366,23 @@ void HealthStatsCollector<
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 初始化分区中心点（聚类中心），确保数据库和查询分区一致
 Status HealthStatsCollector<Searcher, InDataType, InAccamulationType,
-                            Partitioner>::InitializeCentroids(const Searcher&
-                                                                  searcher) {
+              Partitioner>::InitializeCentroids(const Searcher&
+                                  searcher) {
   auto pd = std::dynamic_pointer_cast<const Partitioner>(
-      searcher_->database_tokenizer());
+    searcher_->database_tokenizer());
   auto pq = std::dynamic_pointer_cast<const Partitioner>(
-      searcher_->query_tokenizer());
+    searcher_->query_tokenizer());
   SCANN_RET_CHECK(pd != nullptr);
   SCANN_RET_CHECK(pq != nullptr);
   SCANN_RET_CHECK_EQ(pd->kmeans_tree(), pq->kmeans_tree())
-      << "Centroids in database partitioner and query partitioner must be "
-      << "identical";
+    << "Centroids in database partitioner and query partitioner must be "
+    << "identical";
   SCANN_RET_CHECK(pq->kmeans_tree()->is_flat())
-      << "The query/database partitioner must contain a single flat "
-      << "KMeansTree.";
+    << "The query/database partitioner must contain a single flat "
+    << "KMeansTree.";
 
   centroids_ = std::const_pointer_cast<Partitioner>(pq);
   return OkStatus();
@@ -349,6 +390,8 @@ Status HealthStatsCollector<Searcher, InDataType, InAccamulationType,
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 批量更新分区统计（支持有无中心点的情况）
 template <typename Tokens>
 void HealthStatsCollector<
     Searcher, InDataType, InAccamulationType,
@@ -373,9 +416,9 @@ void HealthStatsCollector<
         for (DatapointIndex dp_idx : datapoints) {
           auto d_ptr = GetDatapointPtr(dp_idx, &dp);
           if (op == Op::Add) {
-            Add(token, d_ptr, centroid);
+            Add(token, d_ptr, centroid); // 增加统计
           } else {
-            Subtract(token, d_ptr, centroid);
+            Subtract(token, d_ptr, centroid); // 减少统计
           }
         }
       }
@@ -389,6 +432,8 @@ void HealthStatsCollector<
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 增加单个数据点到分区的统计信息
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::Add(int32_t token,
                                             DatapointPtr<DataType> dp_ptr,
@@ -403,6 +448,8 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 增加分区大小计数
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::Add(int32_t token) {
   ++sum_partition_sizes_;
@@ -411,6 +458,8 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 移除单个数据点的分区统计信息
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::Subtract(int32_t token,
                                                  DatapointPtr<DataType> dp_ptr,
@@ -426,6 +475,8 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 减少分区大小计数
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::Subtract(int32_t token) {
   --sum_partition_sizes_;
@@ -434,6 +485,8 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+
+// 统计向量增量更新（用于误差累加）
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::AddDelta(Datapoint<InAccamulationType>&
                                                      dst,
@@ -449,12 +502,14 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
 
 template <typename Searcher, typename InDataType, typename InAccamulationType,
           typename Partitioner>
+// 计算分区失衡度（衡量分区分布均匀性）
 void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
                           Partitioner>::ComputeAvgRelativeImbalance() {
   partition_weighted_avg_relative_imbalance_ = 0;
   partition_avg_relative_positive_imbalance_ = 0;
   if (sum_partition_sizes_ == 0) return;
 
+  // 加权失衡度
   for (const auto& partition_size : sizes_by_token_) {
     partition_weighted_avg_relative_imbalance_ +=
         1.0 * partition_size / sum_partition_sizes_ * partition_size;
@@ -463,6 +518,7 @@ void HealthStatsCollector<Searcher, InDataType, InAccamulationType,
       1.0 * sum_partition_sizes_ / sizes_by_token_.size();
   partition_weighted_avg_relative_imbalance_ -= 1.0;
 
+  // 正失衡度（只统计大于均值的分区）
   double best = 1.0 * sum_partition_sizes_ / sizes_by_token_.size();
   uint32_t n_positive = 0;
   for (uint32_t partition_size : sizes_by_token_) {

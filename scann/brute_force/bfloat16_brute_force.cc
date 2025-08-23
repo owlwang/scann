@@ -34,6 +34,7 @@
 
 namespace research_scann {
 
+// 构造函数：通过原始 float 数据集和距离度量初始化 bfloat16 搜索器
 Bfloat16BruteForceSearcher::Bfloat16BruteForceSearcher(
     shared_ptr<const DistanceMeasure> distance,
     shared_ptr<const DenseDataset<float>> dataset,
@@ -44,11 +45,13 @@ Bfloat16BruteForceSearcher::Bfloat16BruteForceSearcher(
       is_dot_product_(distance->specially_optimized_distance_tag() ==
                       distance->DOT_PRODUCT),
       noise_shaping_threshold_(noise_shaping_threshold) {
+  // 仅支持 dot product 和 squared L2 距离
   if (distance->specially_optimized_distance_tag() != distance->DOT_PRODUCT &&
       distance->specially_optimized_distance_tag() != distance->SQUARED_L2) {
     LOG(FATAL) << "Bfloat16 brute force only supports dot product and squared "
                   "L2 distance.";
   }
+  // 支持噪声整形量化
   if (std::isfinite(noise_shaping_threshold)) {
     bfloat16_dataset_ = make_shared<DenseDataset<int16_t>>(
         Bfloat16QuantizeFloatDatasetWithNoiseShaping(*dataset,
@@ -58,6 +61,7 @@ Bfloat16BruteForceSearcher::Bfloat16BruteForceSearcher(
         Bfloat16QuantizeFloatDataset(*dataset));
   }
 }
+// 构造函数：直接通过 bfloat16 数据集初始化
 Bfloat16BruteForceSearcher::Bfloat16BruteForceSearcher(
     shared_ptr<const DistanceMeasure> distance,
     shared_ptr<const DenseDataset<int16_t>> bfloat16_dataset,
@@ -69,14 +73,17 @@ Bfloat16BruteForceSearcher::Bfloat16BruteForceSearcher(
                       distance->DOT_PRODUCT),
       bfloat16_dataset_(std::move(bfloat16_dataset)),
       noise_shaping_threshold_(noise_shaping_threshold) {
+  // 仅支持 dot product 和 squared L2 距离
   if (distance->specially_optimized_distance_tag() != distance->DOT_PRODUCT &&
       distance->specially_optimized_distance_tag() != distance->SQUARED_L2) {
     LOG(FATAL) << "Bfloat16 brute force only supports dot product and squared "
                   "L2 distance.";
   }
+  // 设置 docid 信息
   QCHECK_OK(this->set_docids(bfloat16_dataset_->docids()));
 }
 
+// crowding 属性使能实现，校验 crowding 属性与数据集大小一致
 Status Bfloat16BruteForceSearcher::EnableCrowdingImpl(
     ConstSpan<int64_t> datapoint_index_to_crowding_attribute,
     ConstSpan<std::string> crowding_dimension_names) {
@@ -89,18 +96,22 @@ Status Bfloat16BruteForceSearcher::EnableCrowdingImpl(
   return OkStatus();
 }
 
+// 查找邻居主流程：量化查询、计算距离、TopN筛选
 Status Bfloat16BruteForceSearcher::FindNeighborsImpl(
     const DatapointPtr<float>& query, const SearchParameters& params,
     NNResultsVector* result) const {
   DCHECK(result);
+  // 仅支持 dense 查询
   if (!query.IsDense()) {
     return InvalidArgumentError("Bfloat16 brute force requires dense data.");
   }
+  // 查询和数据库维度需一致
   if (query.dimensionality() != bfloat16_dataset_->dimensionality()) {
     return FailedPreconditionError(
         "Query/database dimensionality mismatch: %d vs %d.",
         query.dimensionality(), bfloat16_dataset_->dimensionality());
   }
+  // crowding 检查
   if (params.pre_reordering_crowding_enabled()) {
     if (!this->crowding_enabled()) {
       return FailedPreconditionError(
@@ -115,9 +126,11 @@ Status Bfloat16BruteForceSearcher::FindNeighborsImpl(
     }
   }
 
+  // 暂不支持 restricts
   if (params.restricts_enabled()) {
     return UnimplementedError("Restricts not supported.");
   } else {
+    // 计算所有点的距离（dot product 或 L2）
     auto dists_ptr =
         static_cast<float*>(malloc(bfloat16_dataset_->size() * sizeof(float)));
     MutableSpan<float> dists_span(dists_ptr, bfloat16_dataset_->size());
@@ -127,6 +140,7 @@ Status Bfloat16BruteForceSearcher::FindNeighborsImpl(
     } else {
       OneToManyBf16FloatSquaredL2(query, *bfloat16_dataset_, dists_span);
     }
+    // TopN筛选
     if (params.pre_reordering_crowding_enabled()) {
       return FailedPreconditionError("Crowding is not supported.");
     } else {
@@ -140,6 +154,7 @@ Status Bfloat16BruteForceSearcher::FindNeighborsImpl(
   return OkStatus();
 }
 
+// 创建通用暴力搜索器（兼容接口）
 StatusOr<const SingleMachineSearcherBase<float>*>
 Bfloat16BruteForceSearcher::CreateBruteForceSearcher(
     const DistanceMeasureConfig& distance_config,
@@ -152,6 +167,7 @@ Bfloat16BruteForceSearcher::CreateBruteForceSearcher(
   return this;
 }
 
+// 获取 Mutator（用于支持动态数据集变更）
 StatusOr<SingleMachineSearcherBase<float>::Mutator*>
 Bfloat16BruteForceSearcher::GetMutator() const {
   if (!mutator_) {
@@ -163,6 +179,7 @@ Bfloat16BruteForceSearcher::GetMutator() const {
   return static_cast<SingleMachineSearcherBase::Mutator*>(mutator_.get());
 }
 
+// 提取工厂选项，生成 bfloat16 数据集副本（用于加速重排序等）
 StatusOr<SingleMachineFactoryOptions>
 Bfloat16BruteForceSearcher::ExtractSingleMachineFactoryOptions() {
   SCANN_ASSIGN_OR_RETURN(

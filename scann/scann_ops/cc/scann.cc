@@ -58,30 +58,39 @@ bool HasSoar(const ScannConfig& config) {
 
 int GetNumCPUs() { return std::max(absl::base_internal::NumCPUs(), 1); }
 
+// 初始化 DenseDataset<float>，支持可选维度
 unique_ptr<DenseDataset<float>> InitDataset(
     ConstSpan<float> dataset, DatapointIndex n_points,
     DimensionIndex n_dim = kInvalidDimension) {
+  // 数据为空且未指定维度则返回空指针
   if (dataset.empty() && n_dim == kInvalidDimension) return nullptr;
 
+  // 拷贝数据到 vector
   vector<float> dataset_vec(dataset.data(), dataset.data() + dataset.size());
   auto ds =
       std::make_unique<DenseDataset<float>>(std::move(dataset_vec), n_points);
+  // 如指定维度则设置
   if (n_dim != kInvalidDimension) {
     ds->set_dimensionality(n_dim);
   }
   return ds;
 }
 
+// 将 tokenization 信息添加到工厂选项
 Status AddTokenizationToOptions(SingleMachineFactoryOptions& opts,
                                 ConstSpan<int32_t> tokenization,
                                 const int spilling_mult = 1) {
+  // tokenization 为空直接返回
   if (tokenization.empty()) return OkStatus();
+  // 必须有分区器
   if (opts.serialized_partitioner == nullptr)
     return FailedPreconditionError(
         "Non-empty tokenization but no serialized partitioner is present.");
+  // 初始化每个 token 的数据点集合
   opts.datapoints_by_token =
       std::make_shared<vector<std::vector<DatapointIndex>>>(
           opts.serialized_partitioner->n_tokens());
+  // 遍历 tokenization，分配数据点到对应 token
   for (auto [dp_idx, token] : Enumerate(tokenization)) {
     if (token != kSoarEmptyToken) {
       opts.datapoints_by_token->at(token).push_back(dp_idx / spilling_mult);
@@ -92,11 +101,13 @@ Status AddTokenizationToOptions(SingleMachineFactoryOptions& opts,
 
 }  // namespace
 
+// 加载 ScaNN 资产，构建工厂选项和数据集
 StatusOr<ScannInterface::ScannArtifacts> ScannInterface::LoadArtifacts(
-    const ScannConfig& config, const ScannAssets& orig_assets) {
+  const ScannConfig& config, const ScannAssets& orig_assets) {
   ScannAssets assets = orig_assets;
   SingleMachineFactoryOptions opts;
 
+  // 按类型排序资产，保证依赖顺序
   std::sort(assets.mutable_assets()->pointer_begin(),
             assets.mutable_assets()->pointer_end(),
             [](const ScannAsset* a, const ScannAsset* b) {
@@ -112,6 +123,7 @@ StatusOr<ScannInterface::ScannArtifacts> ScannInterface::LoadArtifacts(
 
   shared_ptr<DenseDataset<float>> dataset;
   auto fp = make_shared<PreQuantizedFixedPoint>();
+  // 遍历所有资产，按类型加载
   for (const ScannAsset& asset : assets.assets()) {
     const string_view asset_path = asset.asset_path();
     switch (asset.asset_type()) {
@@ -126,6 +138,7 @@ StatusOr<ScannInterface::ScannArtifacts> ScannInterface::LoadArtifacts(
             asset_path, opts.serialized_partitioner.get()));
         break;
       case ScannAsset::TOKENIZATION_NPY: {
+        // 加载 tokenization 信息，处理 SOAR 特殊情况
         SCANN_ASSIGN_OR_RETURN(auto vector_and_shape,
                                NumpyToVectorAndShape<int32_t>(asset_path));
         const int spilling_mult = HasSoar(config) ? 2 : 1;
@@ -143,6 +156,7 @@ StatusOr<ScannInterface::ScannArtifacts> ScannInterface::LoadArtifacts(
         break;
       }
       case ScannAsset::AH_DATASET_NPY: {
+        // 加载哈希数据集
         SCANN_ASSIGN_OR_RETURN(auto vector_and_shape,
                                NumpyToVectorAndShape<uint8_t>(asset_path));
         opts.hashed_dataset = make_shared<DenseDataset<uint8_t>>(
@@ -159,6 +173,7 @@ StatusOr<ScannInterface::ScannArtifacts> ScannInterface::LoadArtifacts(
         break;
       }
       case ScannAsset::DATASET_NPY: {
+        // 加载原始 float 数据集
         SCANN_ASSIGN_OR_RETURN(auto vector_and_shape,
                                NumpyToVectorAndShape<float>(asset_path));
         dataset = make_shared<DenseDataset<float>>(
@@ -169,6 +184,7 @@ StatusOr<ScannInterface::ScannArtifacts> ScannInterface::LoadArtifacts(
         break;
       }
       case ScannAsset::INT8_DATASET_NPY: {
+        // 加载 int8 数据集
         SCANN_ASSIGN_OR_RETURN(auto vector_and_shape,
                                NumpyToVectorAndShape<int8_t>(asset_path));
         fp->fixed_point_dataset = make_shared<DenseDataset<int8_t>>(
@@ -180,6 +196,7 @@ StatusOr<ScannInterface::ScannArtifacts> ScannInterface::LoadArtifacts(
         break;
       }
       case ScannAsset::INT8_MULTIPLIERS_NPY: {
+        // 加载 int8 乘数
         SCANN_ASSIGN_OR_RETURN(auto vector_and_shape,
                                NumpyToVectorAndShape<float>(asset_path));
         fp->multiplier_by_dimension =
@@ -187,6 +204,7 @@ StatusOr<ScannInterface::ScannArtifacts> ScannInterface::LoadArtifacts(
         break;
       }
       case ScannAsset::INT8_NORMS_NPY: {
+        // 加载 int8 范数
         SCANN_ASSIGN_OR_RETURN(auto vector_and_shape,
                                NumpyToVectorAndShape<float>(asset_path));
         fp->squared_l2_norm_by_datapoint =
@@ -194,6 +212,7 @@ StatusOr<ScannInterface::ScannArtifacts> ScannInterface::LoadArtifacts(
         break;
       }
       case ScannAsset::BF16_DATASET_NPY: {
+        // 加载 bfloat16 数据集
         SCANN_ASSIGN_OR_RETURN(auto vector_and_shape,
                                NumpyToVectorAndShape<int16_t>(asset_path));
         opts.bfloat16_dataset = make_shared<DenseDataset<int16_t>>(
@@ -204,6 +223,7 @@ StatusOr<ScannInterface::ScannArtifacts> ScannInterface::LoadArtifacts(
         break;
     }
   }
+  // 如果有 int8 数据集但没有范数，则补充空范数
   if (fp->fixed_point_dataset != nullptr) {
     if (fp->squared_l2_norm_by_datapoint == nullptr)
       fp->squared_l2_norm_by_datapoint = make_shared<vector<float>>();
@@ -243,6 +263,7 @@ StatusOr<ScannInterface::ScannArtifacts> ScannInterface::LoadArtifacts(
   return LoadArtifacts(config, assets);
 }
 
+// 创建搜索器实例，初始化健康状态并释放数据集
 StatusOr<std::unique_ptr<SingleMachineSearcherBase<float>>>
 ScannInterface::CreateSearcher(ScannArtifacts artifacts) {
   auto [config, dataset, opts] = std::move(artifacts);
@@ -259,6 +280,7 @@ ScannInterface::CreateSearcher(ScannArtifacts artifacts) {
   return searcher;
 }
 
+// 用配置和资产文本初始化 ScaNN
 Status ScannInterface::Initialize(const std::string& config_pbtxt,
                                   const std::string& scann_assets_pbtxt) {
   SCANN_RETURN_IF_ERROR(ParseTextProto(&config_, config_pbtxt));
@@ -269,12 +291,13 @@ Status ScannInterface::Initialize(const std::string& config_pbtxt,
   return Initialize(std::tie(config_, dataset, opts));
 }
 
+// 用多种输入初始化 ScaNN，包括 int8、tokenization、哈希等
 Status ScannInterface::Initialize(
-    ScannConfig config, SingleMachineFactoryOptions opts,
-    ConstSpan<float> dataset, ConstSpan<int32_t> datapoint_to_token,
-    ConstSpan<uint8_t> hashed_dataset, ConstSpan<int8_t> int8_dataset,
-    ConstSpan<float> int8_multipliers, ConstSpan<float> dp_norms,
-    DatapointIndex n_points) {
+  ScannConfig config, SingleMachineFactoryOptions opts,
+  ConstSpan<float> dataset, ConstSpan<int32_t> datapoint_to_token,
+  ConstSpan<uint8_t> hashed_dataset, ConstSpan<int8_t> int8_dataset,
+  ConstSpan<float> int8_multipliers, ConstSpan<float> dp_norms,
+  DatapointIndex n_points) {
   config_ = config;
   if (opts.ah_codebook != nullptr) {
     vector<uint8_t> hashed_db(hashed_dataset.data(),
@@ -307,6 +330,7 @@ Status ScannInterface::Initialize(
       config_, InitDataset(dataset, n_points, n_dim), std::move(opts)));
 }
 
+// 用原始数据集和线程数初始化 ScaNN
 Status ScannInterface::Initialize(ConstSpan<float> dataset,
                                   DatapointIndex n_points,
                                   const std::string& config,
@@ -327,6 +351,7 @@ Status ScannInterface::Initialize(ConstSpan<float> dataset,
       config_, InitDataset(dataset, n_points, n_dim), std::move(opts)));
 }
 
+// 用资产元组初始化 ScaNN，设置维度、搜索器等
 Status ScannInterface::Initialize(ScannInterface::ScannArtifacts artifacts) {
   auto [config, dataset, opts] = std::move(artifacts);
   config_ = config;
@@ -355,6 +380,7 @@ Status ScannInterface::Initialize(ScannInterface::ScannArtifacts artifacts) {
   return OkStatus();
 }
 
+// 构造单次查询参数
 SearchParameters ScannInterface::GetSearchParameters(int final_nn,
                                                      int pre_reorder_nn,
                                                      int leaves) const {
@@ -376,9 +402,10 @@ SearchParameters ScannInterface::GetSearchParameters(int final_nn,
   return params;
 }
 
+// 构造批量查询参数
 vector<SearchParameters> ScannInterface::GetSearchParametersBatched(
-    int batch_size, int final_nn, int pre_reorder_nn, int leaves,
-    bool set_unspecified) const {
+  int batch_size, int final_nn, int pre_reorder_nn, int leaves,
+  bool set_unspecified) const {
   vector<SearchParameters> params(batch_size);
   bool has_reordering = config_.has_exact_reordering();
   int post_reorder_nn = -1;
@@ -402,6 +429,7 @@ vector<SearchParameters> ScannInterface::GetSearchParametersBatched(
   return params;
 }
 
+// 重新训练和重建索引
 StatusOr<ScannConfig> ScannInterface::RetrainAndReindex(const string& config) {
   absl::Mutex mu;
   ScannConfig new_config = config_;
@@ -419,6 +447,7 @@ StatusOr<ScannConfig> ScannInterface::RetrainAndReindex(const string& config) {
   return config_;
 }
 
+// 单点查询接口
 Status ScannInterface::Search(const DatapointPtr<float> query,
                               NNResultsVector* res, int final_nn,
                               int pre_reorder_nn, int leaves) const {
@@ -430,6 +459,7 @@ Status ScannInterface::Search(const DatapointPtr<float> query,
   return scann_->FindNeighbors(query, params, res);
 }
 
+// 批量查询接口
 Status ScannInterface::SearchBatched(const DenseDataset<float>& queries,
                                      MutableSpan<NNResultsVector> res,
                                      int final_nn, int pre_reorder_nn,
@@ -444,6 +474,7 @@ Status ScannInterface::SearchBatched(const DenseDataset<float>& queries,
   return scann_->FindNeighborsBatched(queries, params, MakeMutableSpan(res));
 }
 
+// 并行批量查询接口
 Status ScannInterface::SearchBatchedParallel(const DenseDataset<float>& queries,
                                              MutableSpan<NNResultsVector> res,
                                              int final_nn, int pre_reorder_nn,
@@ -469,6 +500,7 @@ Status ScannInterface::SearchBatchedParallel(const DenseDataset<float>& queries,
       });
 }
 
+// 序列化 ScaNN 资产到文件
 StatusOr<ScannAssets> ScannInterface::Serialize(std::string path,
                                                 bool relative_path) {
   SCANN_ASSIGN_OR_RETURN(auto opts,

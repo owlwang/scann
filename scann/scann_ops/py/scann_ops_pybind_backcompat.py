@@ -20,11 +20,13 @@ import os
 from scann.scann_ops import scann_assets_pb2
 
 
+## 路径存在性检查，兼容Google/OSS环境
 def path_exists(path):
   """Wrapper around Google/OSS check for if file/directory exists."""
   return os.path.exists(path)
 
 
+## 生成并保存ScaNN资产proto，兼容旧版序列化格式
 def populate_and_save_assets_proto(
     artifacts_dir):
   """Populate and write a ScannAssets proto listing assets in `artifacts_dir`.

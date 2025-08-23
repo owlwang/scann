@@ -27,13 +27,16 @@
 
 namespace research_scann {
 
+// StatusBuilder类：用于流式构造absl::Status，支持消息拼接和错误类型
 class ABSL_MUST_USE_RESULT StatusBuilder {
  public:
+  // 构造函数：支持Status、StatusCode、拷贝
   explicit StatusBuilder(const absl::Status& status);
   explicit StatusBuilder(absl::Status&& status);
   explicit StatusBuilder(absl::StatusCode code);
   StatusBuilder(const StatusBuilder& sb);
 
+  // 流式拼接消息内容
   template <typename T>
   StatusBuilder& operator<<(const T& value) & {
     if (status_.ok()) return *this;
@@ -48,12 +51,15 @@ class ABSL_MUST_USE_RESULT StatusBuilder {
     return std::move(operator<<(value));
   }
 
+  // 日志错误（占位实现）
   StatusBuilder& LogError() &;
   StatusBuilder&& LogError() &&;
 
+  // 支持隐式转换为absl::Status
   operator absl::Status() const&;
   operator absl::Status() &&;
 
+  // 支持隐式转换为absl::StatusOr<T>
   template <typename T>
   inline operator absl::StatusOr<T>() const& {
     if (streamptr_ == nullptr) return absl::StatusOr<T>(status_);
@@ -66,6 +72,7 @@ class ABSL_MUST_USE_RESULT StatusBuilder {
     return absl::StatusOr<T>(StatusBuilder(*this).CreateStatus());
   }
 
+  // 设置错误码
   inline StatusBuilder& SetCode(absl::StatusCode code) & {
     status_ = absl::Status(code, status_.message());
     return *this;
@@ -75,6 +82,7 @@ class ABSL_MUST_USE_RESULT StatusBuilder {
     return std::move(SetCode(code));
   }
 
+  // 构造最终absl::Status对象
   absl::Status CreateStatus() &&;
 
  private:
@@ -83,6 +91,7 @@ class ABSL_MUST_USE_RESULT StatusBuilder {
   absl::Status status_;
 };
 
+// 各类错误类型的StatusBuilder构造器
 StatusBuilder AbortedErrorBuilder();
 StatusBuilder AlreadyExistsErrorBuilder();
 StatusBuilder CancelledErrorBuilder();

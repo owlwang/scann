@@ -27,19 +27,27 @@
 namespace research_scann {
 namespace port {
 
+// 获取可调度CPU数量
 int NumSchedulableCPUs();
 
+// 获取最大并行度
 int MaxParallelism();
 
+// 获取指定NUMA节点的最大并行度
 int MaxParallelism(int numa_node);
 
+// 未知CPU标记
 static constexpr int kUnknownCPU = -1;
+// 获取系统总CPU数量
 int NumTotalCPUs();
 
+// 获取当前线程所在CPU编号
 int GetCurrentCPU();
 
+// 获取每核超线程数
 int NumHyperthreadsPerCore();
 
+// 枚举：X86/ARM支持的CPU特征
 enum CPUFeature {
 
   MMX = 0,
@@ -98,15 +106,19 @@ enum CPUFeature {
   AVX_VNNI_INT8 = 47,
 };
 
+// 枚举：ARM64 CPU型号
 enum Aarch64CPU {
   ARM_NEOVERSE_N1 = 0,
   ARM_NEOVERSE_V1 = 1,
 };
 
+// 检测ARM64 CPU型号
 bool TestAarch64CPU(Aarch64CPU cpu);
 
+// 检测X86/ARM CPU特征
 bool TestCPUFeature(CPUFeature feature);
 
+// 判断是否为X86平台
 constexpr bool IsX86CPU() {
 #ifdef PLATFORM_IS_X86
   return true;
@@ -115,6 +127,7 @@ constexpr bool IsX86CPU() {
 #endif
 }
 
+// 判断是否为ARM64平台
 constexpr bool IsAarch64CPU() {
 #if defined(PLATFORM_IS_ARM64) && !defined(__APPLE__) && !defined(__OpenBSD__)
   return true;
@@ -123,14 +136,19 @@ constexpr bool IsAarch64CPU() {
 #endif
 }
 
+// 获取CPU厂商字符串
 std::string CPUVendorIDString();
 
+// 获取CPU家族号
 int CPUFamily();
 
+// 获取CPU型号
 int CPUModelNum();
 
+// 获取CPU标称主频（GHz）
 double NominalCPUFrequency();
 
+// 获取SMT（超线程）数量
 int CPUIDNumSMT();
 
 }  // namespace port

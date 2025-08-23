@@ -21,24 +21,31 @@
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 
+
+// ScaNN TensorFlow算子工具函数
 namespace tensorflow {
 namespace scann_ops {
 
+// 将protobuf序列化内容写入Tensor
 absl::Status TensorFromProto(OpKernelContext* context, absl::string_view name,
                              const protobuf::MessageLite* proto);
+// 检查状态的TensorFromProto
 void TensorFromProtoRequireOk(OpKernelContext* context, absl::string_view name,
                               const protobuf::MessageLite* proto);
 
+// 创建空Tensor
 absl::Status EmptyTensor(OpKernelContext* context, absl::string_view name);
-
 void EmptyTensorRequireOk(OpKernelContext* context, absl::string_view name);
 
+// TensorFlow Status与absl::Status转换
 Status ConvertStatus(const Status& status);
 
+// 将Tensor转为DenseDataset（支持类型转换）
 template <typename DstType, typename SrcType = DstType>
 absl::Status PopulateDenseDatasetFromTensor(
     const Tensor& tensor, research_scann::DenseDataset<DstType>* dataset);
 
+// 实现：将二维Tensor转为DenseDataset
 template <typename DstType, typename SrcType>
 absl::Status PopulateDenseDatasetFromTensor(
     const Tensor& tensor, research_scann::DenseDataset<DstType>* dataset) {
@@ -57,6 +64,7 @@ absl::Status PopulateDenseDatasetFromTensor(
   dataset->Reserve(num_datapoint);
 
   for (int i = 0; i < num_datapoint; ++i) {
+    // 构造DatapointPtr并加入Dataset
     const research_scann::DatapointPtr<DstType> dptr(
         nullptr, reinterpret_cast<const DstType*>(&tensor_t(i, 0)), num_dim,
         num_dim);
@@ -65,6 +73,8 @@ absl::Status PopulateDenseDatasetFromTensor(
   return OkStatus();
 }
 
+
+// DenseDataset转Tensor
 template <typename T>
 absl::Status TensorFromDenseDataset(
     OpKernelContext* context, absl::string_view name,
@@ -81,6 +91,8 @@ absl::Status TensorFromDenseDataset(
   return OkStatus();
 }
 
+
+// 检查状态的DenseDataset转Tensor
 template <typename T>
 void TensorFromDenseDatasetRequireOk(
     OpKernelContext* context, absl::string_view name,
@@ -88,6 +100,8 @@ void TensorFromDenseDatasetRequireOk(
   OP_REQUIRES_OK(context, TensorFromDenseDataset(context, name, dataset));
 }
 
+
+// ConstSpan转Tensor
 template <typename T>
 absl::Status TensorFromSpan(OpKernelContext* context, absl::string_view name,
                             research_scann::ConstSpan<T> span) {
@@ -100,12 +114,16 @@ absl::Status TensorFromSpan(OpKernelContext* context, absl::string_view name,
   return OkStatus();
 }
 
+
+// 检查状态的ConstSpan转Tensor
 template <typename T>
 void TensorFromSpanRequireOk(OpKernelContext* context, absl::string_view name,
                              research_scann::ConstSpan<T> span) {
   OP_REQUIRES_OK(context, TensorFromSpan(context, name, span));
 }
 
+
+// Tensor转ConstSpan（用于高效访问Tensor数据）
 template <typename T>
 research_scann::ConstSpan<T> TensorToConstSpan(const Tensor* t) {
   return absl::MakeConstSpan(t->flat<T>().data(), t->NumElements());

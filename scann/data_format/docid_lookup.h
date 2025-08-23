@@ -23,18 +23,23 @@
 
 namespace research_scann {
 
+// DocidLookup：docid 查找抽象接口，支持单个和批量查找
 class DocidLookup {
  public:
   virtual ~DocidLookup() = default;
 
+  // 查找 docid 对应的数据点索引，返回是否找到
   virtual bool LookupDatapointIndex(string_view docid,
                                     DatapointIndex* idx) const = 0;
 
+  // DocidGetter：批量查找时获取 docid 的函数类型
   using DocidGetter = absl::AnyInvocable<string_view(size_t) const>;
 
+  // LookupCallback：批量查找时回调，返回 docid 索引和数据点索引
   using LookupCallback =
       absl::AnyInvocable<void(size_t docids_idx, DatapointIndex dp_idx)>;
 
+  // 批量查找 docid 索引，支持自定义 getter 和回调
   virtual void LookupDatapointIndices(size_t num_docids,
                                       DocidGetter docid_getter,
                                       LookupCallback callback) const {
@@ -46,6 +51,7 @@ class DocidLookup {
     }
   }
 
+  // 返回实现名称
   virtual string_view ImplName() const = 0;
 };
 

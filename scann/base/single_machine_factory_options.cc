@@ -18,12 +18,15 @@
 
 namespace research_scann {
 
+// 计算工厂选项下所有相关数据集的维度一致性
 StatusOr<DimensionIndex>
 SingleMachineFactoryOptions::ComputeConsistentDimensionality(
     const ScannConfig& config, const Dataset* dataset) const {
+  // 调用工具函数，检查主数据集、哈希数据集、预量化数据集、bfloat16数据集的维度是否一致
   return ComputeConsistentDimensionalityFromIndex(
       config, dataset, hashed_dataset.get(), pre_quantized_fixed_point.get(),
       bfloat16_dataset.get());
 }
 
+// research_scann 命名空间结束
 }  // namespace research_scann

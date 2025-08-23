@@ -25,32 +25,41 @@
 
 namespace research_scann {
 
+
+// 创建Mutator对象，初始化量化数据集和docid集合
 StatusOr<unique_ptr<ScalarQuantizedBruteForceSearcher::Mutator>>
 ScalarQuantizedBruteForceSearcher::Mutator::Create(
-    ScalarQuantizedBruteForceSearcher* searcher) {
+  ScalarQuantizedBruteForceSearcher* searcher) {
+  // 释放原有docid集合
   const_cast<DenseDataset<int8_t>*>(searcher->quantized_dataset_.get())
-      ->ReleaseDocids();
+    ->ReleaseDocids();
 
+  // 获取量化数据集的Mutator
   SCANN_ASSIGN_OR_RETURN(auto quantized_dataset_mutator,
-                         searcher->quantized_dataset_->GetMutator());
+             searcher->quantized_dataset_->GetMutator());
+  // 计算量化乘子
   ConstSpan<float> inverse_multipliers =
-      *searcher->inverse_multiplier_by_dimension_;
+    *searcher->inverse_multiplier_by_dimension_;
   vector<float> multipliers(inverse_multipliers.size());
   for (auto i : Seq(multipliers.size())) {
-    multipliers[i] = 1.0f / inverse_multipliers[i];
+  multipliers[i] = 1.0f / inverse_multipliers[i];
   }
+  // 初始化docid集合
   if (!searcher->docids()) {
-    SCANN_RETURN_IF_ERROR(
-        searcher->set_docids(make_unique<VariableLengthDocidCollection>(
-            VariableLengthDocidCollection::CreateWithEmptyDocids(
-                searcher->quantized_dataset_->size()))));
+  SCANN_RETURN_IF_ERROR(
+    searcher->set_docids(make_unique<VariableLengthDocidCollection>(
+      VariableLengthDocidCollection::CreateWithEmptyDocids(
+        searcher->quantized_dataset_->size()))));
   }
 
+  // 返回Mutator对象
   return absl::WrapUnique<ScalarQuantizedBruteForceSearcher::Mutator>(
-      new ScalarQuantizedBruteForceSearcher::Mutator(
-          searcher, quantized_dataset_mutator, std::move(multipliers)));
+    new ScalarQuantizedBruteForceSearcher::Mutator(
+      searcher, quantized_dataset_mutator, std::move(multipliers)));
 }
 
+
+// 预分配量化数据集和L2范数空间
 void ScalarQuantizedBruteForceSearcher::Mutator::Reserve(size_t size) {
   quantized_dataset_mutator_->Reserve(size);
   if (searcher_->distance_->specially_optimized_distance_tag() ==
@@ -62,6 +71,8 @@ void ScalarQuantizedBruteForceSearcher::Mutator::Reserve(size_t size) {
   }
 }
 
+
+// 对输入数据点进行量化（支持噪声整形）
 DatapointPtr<int8_t> ScalarQuantizedBruteForceSearcher::Mutator::ScalarQuantize(
     const DatapointPtr<float>& dptr) {
   if (std::isnan(searcher_->opts_.noise_shaping_threshold)) {
@@ -74,6 +85,8 @@ DatapointPtr<int8_t> ScalarQuantizedBruteForceSearcher::Mutator::ScalarQuantize(
   }
 }
 
+
+// 添加数据点到量化数据集和原始数据集
 StatusOr<DatapointIndex>
 ScalarQuantizedBruteForceSearcher::Mutator::AddDatapoint(
     const DatapointPtr<float>& dptr, string_view docid,
@@ -93,6 +106,8 @@ ScalarQuantizedBruteForceSearcher::Mutator::AddDatapoint(
   return result;
 }
 
+
+// 移除指定索引的数据点（量化和原始数据集）
 Status ScalarQuantizedBruteForceSearcher::Mutator::RemoveDatapoint(
     DatapointIndex index) {
   SCANN_RETURN_IF_ERROR(this->ValidateForRemove(index));
@@ -110,6 +125,8 @@ Status ScalarQuantizedBruteForceSearcher::Mutator::RemoveDatapoint(
   return OkStatus();
 }
 
+
+// 根据docid移除数据点
 Status ScalarQuantizedBruteForceSearcher::Mutator::RemoveDatapoint(
     string_view docid) {
   SCANN_ASSIGN_OR_RETURN(DatapointIndex index,
@@ -117,6 +134,8 @@ Status ScalarQuantizedBruteForceSearcher::Mutator::RemoveDatapoint(
   return RemoveDatapoint(index);
 }
 
+
+// 根据docid更新数据点
 StatusOr<DatapointIndex>
 ScalarQuantizedBruteForceSearcher::Mutator::UpdateDatapoint(
     const DatapointPtr<float>& dptr, string_view docid,
@@ -126,6 +145,8 @@ ScalarQuantizedBruteForceSearcher::Mutator::UpdateDatapoint(
   return UpdateDatapoint(dptr, index, mo);
 }
 
+
+// 根据索引更新数据点（量化和原始数据集）
 StatusOr<DatapointIndex>
 ScalarQuantizedBruteForceSearcher::Mutator::UpdateDatapoint(
     const DatapointPtr<float>& dptr, DatapointIndex index,
@@ -146,6 +167,8 @@ ScalarQuantizedBruteForceSearcher::Mutator::UpdateDatapoint(
   return index;
 }
 
+
+// docid查找数据点索引，未找到则报错
 StatusOr<DatapointIndex>
 ScalarQuantizedBruteForceSearcher::Mutator::LookupDatapointIndexOrError(
     string_view docid) const {

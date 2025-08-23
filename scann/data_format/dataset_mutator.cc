@@ -24,6 +24,7 @@
 namespace research_scann {
 
 template <typename T>
+// 创建 Mutator 实例，用于支持 DenseDataset 的动态增删改
 StatusOr<unique_ptr<typename DenseDataset<T>::Mutator>>
 DenseDataset<T>::Mutator::Create(DenseDataset<T>* dataset) {
   SCANN_ASSIGN_OR_RETURN(auto mutator, dataset->docids()->GetMutator());
@@ -31,24 +32,28 @@ DenseDataset<T>::Mutator::Create(DenseDataset<T>* dataset) {
 }
 
 template <typename T>
+// 通过 docid 查找数据点索引
 bool DenseDataset<T>::Mutator::LookupDatapointIndex(
     string_view docid, DatapointIndex* index) const {
   return docid_mutator_->LookupDatapointIndex(docid, index);
 }
 
 template <typename T>
+// 预分配底层数据空间，提升批量插入效率
 void DenseDataset<T>::Mutator::Reserve(size_t size) {
   docid_mutator_->Reserve(size);
   dataset_->ReserveImpl(size);
 }
 
 template <typename T>
+// 增加数据点（带 docid）
 Status DenseDataset<T>::Mutator::AddDatapoint(const DatapointPtr<T>& dptr,
                                               string_view docid) {
   return dataset_->Append(dptr, docid);
 }
 
 template <typename T>
+// 删除指定索引的数据点，支持底层数据和 docid 同步
 Status DenseDataset<T>::Mutator::RemoveDatapoint(DatapointIndex index) {
   if (index >= dataset_->size()) {
     return OutOfRangeError(
@@ -56,6 +61,7 @@ Status DenseDataset<T>::Mutator::RemoveDatapoint(DatapointIndex index) {
         index, dataset_->size());
   }
 
+  // 用最后一个数据点覆盖待删除位置，实现 O(1) 删除
   std::copy(
       dataset_->data_.begin() + (dataset_->size() - 1) * dataset_->stride_,
       dataset_->data_.begin() + dataset_->size() * dataset_->stride_,
@@ -67,6 +73,7 @@ Status DenseDataset<T>::Mutator::RemoveDatapoint(DatapointIndex index) {
 }
 
 template <typename T>
+// 通过 docid 删除数据点
 Status DenseDataset<T>::Mutator::RemoveDatapoint(string_view docid) {
   DatapointIndex index;
   if (!LookupDatapointIndex(docid, &index)) {
@@ -76,6 +83,7 @@ Status DenseDataset<T>::Mutator::RemoveDatapoint(string_view docid) {
 }
 
 template <typename T>
+// 更新数据点（通过 docid 查找索引）
 Status DenseDataset<T>::Mutator::UpdateDatapoint(const DatapointPtr<T>& dptr,
                                                  string_view docid) {
   DatapointIndex index;
@@ -86,6 +94,7 @@ Status DenseDataset<T>::Mutator::UpdateDatapoint(const DatapointPtr<T>& dptr,
 }
 
 template <typename T>
+// 更新指定索引的数据点，支持归一化和维度校验
 Status DenseDataset<T>::Mutator::UpdateDatapoint(const DatapointPtr<T>& dptr,
                                                  DatapointIndex index) {
   if (dptr.dimensionality() != dataset_->dimensionality()) {
@@ -104,6 +113,7 @@ Status DenseDataset<T>::Mutator::UpdateDatapoint(const DatapointPtr<T>& dptr,
 }
 
 template <typename T>
+// 获取指定索引的数据点
 StatusOr<Datapoint<T>> DenseDataset<T>::Mutator::GetDatapoint(
     DatapointIndex index) const {
   if (index >= dataset_->size()) {

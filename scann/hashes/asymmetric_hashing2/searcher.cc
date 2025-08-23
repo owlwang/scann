@@ -46,10 +46,11 @@ namespace research_scann {
 namespace asymmetric_hashing2 {
 namespace {
 
+// 对哈希数据集进行预处理，支持 PRODUCT_AND_BIAS 和 PRODUCT_AND_PACK 两种量化方案
 std::shared_ptr<DenseDataset<uint8_t>> PreprocessHashedDataset(
-    std::shared_ptr<DenseDataset<uint8_t>> hashed_dataset,
-    const AsymmetricHasherConfig::QuantizationScheme quantization_scheme,
-    const size_t num_blocks) {
+  std::shared_ptr<DenseDataset<uint8_t>> hashed_dataset,
+  const AsymmetricHasherConfig::QuantizationScheme quantization_scheme,
+  const size_t num_blocks) {
   if (quantization_scheme == AsymmetricHasherConfig::PRODUCT_AND_BIAS) {
     auto dataset_no_bias = std::make_shared<DenseDataset<uint8_t>>();
 
@@ -82,25 +83,26 @@ std::shared_ptr<DenseDataset<uint8_t>> PreprocessHashedDataset(
 }
 }  // namespace
 
+// SearcherBase 构造函数，初始化数据集、查找器选项、LUT16打包、norm/bias等
 template <typename T>
 SearcherBase<T>::SearcherBase(
-    std::shared_ptr<TypedDataset<T>> dataset,
-    std::shared_ptr<DenseDataset<uint8_t>> hashed_dataset,
-    SearcherOptions<T> opts, int32_t default_pre_reordering_num_neighbors,
-    float default_pre_reordering_epsilon)
-    : SingleMachineSearcherBase<T>(
-          dataset,
-          PreprocessHashedDataset(hashed_dataset, opts.quantization_scheme(),
-                                  opts.num_blocks()),
-          default_pre_reordering_num_neighbors, default_pre_reordering_epsilon),
-      opts_(std::move(opts)),
-      limited_inner_product_(
-          (opts_.asymmetric_queryer_ &&
-           typeid(*opts_.asymmetric_queryer_->lookup_distance()) ==
-               typeid(const LimitedInnerProductDistance))),
-      lut16_(opts_.asymmetric_lookup_type_ ==
-                 AsymmetricHasherConfig::INT8_LUT16 &&
-             opts_.asymmetric_queryer_) {
+  std::shared_ptr<TypedDataset<T>> dataset,
+  std::shared_ptr<DenseDataset<uint8_t>> hashed_dataset,
+  SearcherOptions<T> opts, int32_t default_pre_reordering_num_neighbors,
+  float default_pre_reordering_epsilon)
+  : SingleMachineSearcherBase<T>(
+      dataset,
+      PreprocessHashedDataset(hashed_dataset, opts.quantization_scheme(),
+                  opts.num_blocks()),
+      default_pre_reordering_num_neighbors, default_pre_reordering_epsilon),
+    opts_(std::move(opts)),
+    limited_inner_product_(
+      (opts_.asymmetric_queryer_ &&
+       typeid(*opts_.asymmetric_queryer_->lookup_distance()) ==
+         typeid(const LimitedInnerProductDistance))),
+    lut16_(opts_.asymmetric_lookup_type_ ==
+         AsymmetricHasherConfig::INT8_LUT16 &&
+       opts_.asymmetric_queryer_) {
   DCHECK(hashed_dataset);
 
   if (lut16_) {
@@ -155,25 +157,27 @@ SearcherBase<T>::SearcherBase(
   }
 }
 
+// SearcherBase 构造函数（无数据集版本），初始化查找器选项
 template <typename T>
 SearcherBase<T>::SearcherBase(SearcherOptions<T> opts,
-                              int32_t default_pre_reordering_num_neighbors,
-                              float default_pre_reordering_epsilon)
-    : SingleMachineSearcherBase<T>(default_pre_reordering_num_neighbors,
-                                   default_pre_reordering_epsilon),
-      opts_(std::move(opts)),
-      limited_inner_product_(
-          (opts_.asymmetric_queryer_ &&
-           dynamic_cast<const LimitedInnerProductDistance*>(
-               opts_.asymmetric_queryer_->lookup_distance().get()) != nullptr)),
-      lut16_(opts_.asymmetric_lookup_type_ ==
-                 AsymmetricHasherConfig::INT8_LUT16 &&
-             opts_.asymmetric_queryer_) {}
+                int32_t default_pre_reordering_num_neighbors,
+                float default_pre_reordering_epsilon)
+  : SingleMachineSearcherBase<T>(default_pre_reordering_num_neighbors,
+                   default_pre_reordering_epsilon),
+    opts_(std::move(opts)),
+    limited_inner_product_(
+      (opts_.asymmetric_queryer_ &&
+       dynamic_cast<const LimitedInnerProductDistance*>(
+         opts_.asymmetric_queryer_->lookup_distance().get()) != nullptr)),
+    lut16_(opts_.asymmetric_lookup_type_ ==
+         AsymmetricHasherConfig::INT8_LUT16 &&
+       opts_.asymmetric_queryer_) {}
 
+// 获取或创建查找表，支持预计算查找表和动态生成
 template <typename T>
 StatusOr<const LookupTable*> SearcherBase<T>::GetOrCreateLookupTable(
-    const DatapointPtr<T>& query, const SearchParameters& params,
-    LookupTable* created_lookup_table_storage) const {
+  const DatapointPtr<T>& query, const SearchParameters& params,
+  LookupTable* created_lookup_table_storage) const {
   DCHECK(created_lookup_table_storage);
   auto per_query_opts =
       dynamic_cast<const AsymmetricHashingOptionalParameters*>(
@@ -189,6 +193,7 @@ StatusOr<const LookupTable*> SearcherBase<T>::GetOrCreateLookupTable(
   return created_lookup_table_storage;
 }
 
+// Searcher 构造函数，初始化基类
 template <typename T>
 Searcher<T>::Searcher(std::shared_ptr<TypedDataset<T>> dataset,
                       std::shared_ptr<DenseDataset<uint8_t>> hashed_dataset,
@@ -199,9 +204,11 @@ Searcher<T>::Searcher(std::shared_ptr<TypedDataset<T>> dataset,
                       default_pre_reordering_num_neighbors,
                       default_pre_reordering_epsilon) {}
 
+// Searcher 析构函数
 template <typename T>
 Searcher<T>::~Searcher() {}
 
+// 校验 limited_inner_product 模式下 norm/bias 数组大小
 template <typename T>
 Status Searcher<T>::VerifyLimitedInnerProductNormsSize() const {
   SCANN_RET_CHECK(this->limited_inner_product_);
@@ -220,6 +227,7 @@ Status Searcher<T>::VerifyLimitedInnerProductNormsSize() const {
   return OkStatus();
 }
 
+// 近邻查找主实现，支持 limited_inner_product、PRODUCT_AND_BIAS、普通查找
 template <typename T>
 Status Searcher<T>::FindNeighborsImpl(const DatapointPtr<T>& query,
                                       const SearchParameters& params,
@@ -253,10 +261,11 @@ Status Searcher<T>::FindNeighborsImpl(const DatapointPtr<T>& query,
   }
 }
 
+// 批量近邻查找主实现，支持 LUT16、limited_inner_product、crowding等场景
 template <typename T>
 Status Searcher<T>::FindNeighborsBatchedImpl(
-    const TypedDataset<T>& queries, ConstSpan<SearchParameters> params,
-    MutableSpan<NNResultsVector> results) const {
+  const TypedDataset<T>& queries, ConstSpan<SearchParameters> params,
+  MutableSpan<NNResultsVector> results) const {
   bool crowding_enabled_for_any_query = false;
   for (const auto& p : params) {
     if (p.pre_reordering_crowding_enabled()) {
@@ -275,11 +284,12 @@ Status Searcher<T>::FindNeighborsBatchedImpl(
       [&queries](DatapointIndex i) { return queries[i]; }, params, results);
 }
 
+// 近邻查找分发器，支持不同后处理仿函数
 template <typename T>
 template <typename PostprocessFunctor>
 Status Searcher<T>::FindNeighborsTopNDispatcher(
-    const DatapointPtr<T>& query, const SearchParameters& params,
-    PostprocessFunctor postprocessing_functor, NNResultsVector* result) const {
+  const DatapointPtr<T>& query, const SearchParameters& params,
+  PostprocessFunctor postprocessing_functor, NNResultsVector* result) const {
   auto queryer_options = GetQueryerOptions(postprocessing_functor);
   LookupTable lookup_table_storage;
   SCANN_ASSIGN_OR_RETURN(
@@ -296,10 +306,11 @@ Status Searcher<T>::FindNeighborsTopNDispatcher(
   return OkStatus();
 }
 
+// 构造 QueryerOptions，包含哈希数据集视图、LUT16打包、后处理仿函数
 template <typename T>
 template <typename PostprocessFunctor>
 QueryerOptions<PostprocessFunctor> Searcher<T>::GetQueryerOptions(
-    PostprocessFunctor postprocessing_functor) const {
+  PostprocessFunctor postprocessing_functor) const {
   QueryerOptions<PostprocessFunctor> queryer_options;
   std::shared_ptr<DefaultDenseDatasetView<uint8_t>> hashed_dataset_view;
 
@@ -316,11 +327,12 @@ QueryerOptions<PostprocessFunctor> Searcher<T>::GetQueryerOptions(
   return queryer_options;
 }
 
+// 批量近邻查找内部实现，按批次分组处理
 template <typename T>
 Status Searcher<T>::FindNeighborsBatchedInternal(
-    std::function<DatapointPtr<T>(DatapointIndex)> get_query,
-    ConstSpan<SearchParameters> params,
-    MutableSpan<NNResultsVector> results) const {
+  std::function<DatapointPtr<T>(DatapointIndex)> get_query,
+  ConstSpan<SearchParameters> params,
+  MutableSpan<NNResultsVector> results) const {
   using QueryerOptionsT =
       QueryerOptions<asymmetric_hashing_internal::IdentityPostprocessFunctor>;
   QueryerOptionsT queryer_options;
@@ -403,14 +415,15 @@ Status Searcher<T>::FindNeighborsBatchedInternal(
   return OkStatus();
 }
 
+// 处理一批低层次近邻查找，批量查找表和TopN
 template <typename T>
 template <size_t kNumQueries, typename PostprocessFunctor>
 Status Searcher<T>::FindOneLowLevelBatchOfNeighbors(
-    size_t low_level_batch_start,
-    std::function<DatapointPtr<T>(DatapointIndex)> get_query,
-    ConstSpan<SearchParameters> params,
-    const QueryerOptions<PostprocessFunctor>& queryer_options,
-    MutableSpan<NNResultsVector> results) const {
+  size_t low_level_batch_start,
+  std::function<DatapointPtr<T>(DatapointIndex)> get_query,
+  ConstSpan<SearchParameters> params,
+  const QueryerOptions<PostprocessFunctor>& queryer_options,
+  MutableSpan<NNResultsVector> results) const {
   std::array<LookupTable, kNumQueries> lookup_storages;
   std::array<const LookupTable*, kNumQueries> lookup_ptrs;
   std::array<TopNeighbors<float>, kNumQueries> top_ns_storage;
@@ -437,10 +450,11 @@ Status Searcher<T>::FindOneLowLevelBatchOfNeighbors(
   return OkStatus();
 }
 
+// 创建预计算查找表参数
 template <typename T>
 StatusOr<std::unique_ptr<SearcherSpecificOptionalParameters>>
 PrecomputedAsymmetricLookupTableCreator<T>::
-    CreateLeafSearcherOptionalParameters(const DatapointPtr<T>& query) const {
+  CreateLeafSearcherOptionalParameters(const DatapointPtr<T>& query) const {
   SCANN_ASSIGN_OR_RETURN(
       LookupTable lookup_table,
       queryer_->CreateLookupTable(query, lookup_type_,
@@ -449,6 +463,7 @@ PrecomputedAsymmetricLookupTableCreator<T>::
       new AsymmetricHashingOptionalParameters(std::move(lookup_table)));
 }
 
+// 获取 Mutator 实例，支持懒加载和初始化
 template <typename T>
 StatusOr<typename SingleMachineSearcherBase<T>::Mutator*>
 Searcher<T>::GetMutator() const {
@@ -471,6 +486,7 @@ Searcher<T>::GetMutator() const {
       mutator_.get());
 }
 
+// 提取工厂选项，包含查找器模型和打包数据集
 template <typename T>
 StatusOr<SingleMachineFactoryOptions>
 Searcher<T>::ExtractSingleMachineFactoryOptions() {
@@ -490,10 +506,13 @@ Searcher<T>::ExtractSingleMachineFactoryOptions() {
   return opts;
 }
 
+// Searcher 相关模板类显式实例化声明
 SCANN_INSTANTIATE_TYPED_CLASS(, SearcherOptions);
 SCANN_INSTANTIATE_TYPED_CLASS(, SearcherBase);
 SCANN_INSTANTIATE_TYPED_CLASS(, Searcher);
 SCANN_INSTANTIATE_TYPED_CLASS(, PrecomputedAsymmetricLookupTableCreator);
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann

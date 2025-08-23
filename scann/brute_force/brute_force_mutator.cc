@@ -25,6 +25,7 @@
 namespace research_scann {
 
 template <typename T>
+// 创建 Mutator 实例，用于支持数据集的动态增删改
 StatusOr<unique_ptr<typename BruteForceSearcher<T>::Mutator>>
 BruteForceSearcher<T>::Mutator::Create(BruteForceSearcher<T>* searcher) {
   return absl::WrapUnique<typename BruteForceSearcher<T>::Mutator>(
@@ -32,17 +33,20 @@ BruteForceSearcher<T>::Mutator::Create(BruteForceSearcher<T>* searcher) {
 }
 
 template <typename T>
+// 预分配底层数据空间，提升批量插入效率
 void BruteForceSearcher<T>::Mutator::Reserve(size_t size) {
   this->ReserveInBase(size);
 }
 
 template <typename T>
+// 获取指定索引的数据点
 StatusOr<Datapoint<T>> BruteForceSearcher<T>::Mutator::GetDatapoint(
     DatapointIndex i) const {
   return this->GetDatapointFromBase(i);
 }
 
 template <typename T>
+// 增加数据点（带 docid），并进行合法性校验
 StatusOr<DatapointIndex> BruteForceSearcher<T>::Mutator::AddDatapoint(
     const DatapointPtr<T>& dptr, string_view docid, const MutationOptions& mo) {
   SCANN_RETURN_IF_ERROR(this->ValidateForAdd(dptr, docid, mo));
@@ -53,6 +57,7 @@ StatusOr<DatapointIndex> BruteForceSearcher<T>::Mutator::AddDatapoint(
 }
 
 template <typename T>
+// 删除指定索引的数据点，支持底层索引重命名
 Status BruteForceSearcher<T>::Mutator::RemoveDatapoint(DatapointIndex index) {
   SCANN_RETURN_IF_ERROR(this->ValidateForRemove(index));
   SCANN_ASSIGN_OR_RETURN(const DatapointIndex swapped_in,
@@ -62,6 +67,7 @@ Status BruteForceSearcher<T>::Mutator::RemoveDatapoint(DatapointIndex index) {
 }
 
 template <typename T>
+// 通过 docid 删除数据点
 Status BruteForceSearcher<T>::Mutator::RemoveDatapoint(string_view docid) {
   SCANN_ASSIGN_OR_RETURN(DatapointIndex index,
                          LookupDatapointIndexOrError(docid));
@@ -69,6 +75,7 @@ Status BruteForceSearcher<T>::Mutator::RemoveDatapoint(string_view docid) {
 }
 
 template <typename T>
+// 更新数据点（通过 docid 查找索引）
 StatusOr<DatapointIndex> BruteForceSearcher<T>::Mutator::UpdateDatapoint(
     const DatapointPtr<T>& dptr, string_view docid, const MutationOptions& mo) {
   SCANN_ASSIGN_OR_RETURN(DatapointIndex index,
@@ -77,6 +84,7 @@ StatusOr<DatapointIndex> BruteForceSearcher<T>::Mutator::UpdateDatapoint(
 }
 
 template <typename T>
+// 更新指定索引的数据点，支持合法性校验
 StatusOr<DatapointIndex> BruteForceSearcher<T>::Mutator::UpdateDatapoint(
     const DatapointPtr<T>& dptr, DatapointIndex index,
     const MutationOptions& mo) {
@@ -87,6 +95,7 @@ StatusOr<DatapointIndex> BruteForceSearcher<T>::Mutator::UpdateDatapoint(
 }
 
 template <typename T>
+// 通过 docid 查找数据点索引，包含边界和有效性检查
 StatusOr<DatapointIndex>
 BruteForceSearcher<T>::Mutator::LookupDatapointIndexOrError(
     string_view docid) const {
@@ -104,6 +113,7 @@ BruteForceSearcher<T>::Mutator::LookupDatapointIndexOrError(
 }
 
 template <typename T>
+// 增量维护：根据 autopilot 策略动态调整配置
 StatusOr<std::optional<ScannConfig>>
 BruteForceSearcher<T>::Mutator::IncrementalMaintenance() {
   if (searcher_->config().has_value() &&

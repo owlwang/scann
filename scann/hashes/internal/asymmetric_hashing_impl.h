@@ -38,6 +38,7 @@
 namespace research_scann {
 namespace asymmetric_hashing_internal {
 
+// 计算聚类中心的归一化偏置修正，用于量化
 template <typename FloatT>
 StatusOr<double> ComputeNormBiasCorrection(
     const DenseDataset<FloatT>& db, DatapointPtr<double> center,
@@ -58,6 +59,7 @@ StatusOr<double> ComputeNormBiasCorrection(
   return (center_norm == 0.0) ? 1.0 : (mean_norm / center_norm);
 }
 
+// 类型转换辅助，将double中心转为float中心
 template <typename T>
 inline vector<DenseDataset<FloatingTypeFor<T>>> ConvertCentersIfNecessary(
     std::vector<DenseDataset<double>> double_centers) {
@@ -69,33 +71,39 @@ inline vector<DenseDataset<FloatingTypeFor<T>>> ConvertCentersIfNecessary(
   return result;
 }
 
+// double类型特化，直接返回
 template <>
 inline std::vector<DenseDataset<double>> ConvertCentersIfNecessary<double>(
     std::vector<DenseDataset<double>> double_centers) {
   return double_centers;
 }
 
+// AH实现主结构体，封装训练、索引、查找等静态方法
 template <typename T>
 struct AhImpl {
   using FloatT = FloatingTypeFor<T>;
   using TrainingOptionsT = asymmetric_hashing2::TrainingOptionsTyped<T>;
 
+  // 训练AH中心
   static StatusOr<std::vector<DenseDataset<double>>> TrainAsymmetricHashing(
       const TypedDataset<T>& dataset, const TrainingOptionsT& opts,
       shared_ptr<ThreadPool> pool);
 
+  // 单数据点量化编码（输出uint8）
   static Status IndexDatapoint(const DatapointPtr<T>& input,
                                const ChunkingProjection<T>& projection,
                                const DistanceMeasure& quantization_distance,
                                ConstSpan<DenseDataset<FloatT>> centers,
                                Datapoint<uint8_t>* result);
 
+  // 单数据点量化编码（输出可变span）
   static Status IndexDatapoint(const DatapointPtr<T>& input,
                                const ChunkingProjection<T>& projection,
                                const DistanceMeasure& quantization_distance,
                                ConstSpan<DenseDataset<FloatT>> centers,
                                MutableSpan<uint8_t> result);
 
+  // 噪声整形量化编码
   static Status IndexDatapointNoiseShaped(
       const DatapointPtr<T>& maybe_residual_dptr,
       const DatapointPtr<T>& original_dptr,
@@ -103,6 +111,7 @@ struct AhImpl {
       ConstSpan<DenseDataset<FloatingTypeFor<T>>> centers, double threshold,
       double eta, MutableSpan<uint8_t> result);
 
+  // 创建查找表（float型），用于查找
   static StatusOr<std::vector<float>> CreateRawFloatLookupTable(
       const DatapointPtr<T>& query, const ChunkingProjection<T>& projection,
       const DistanceMeasure& lookup_distance,
@@ -113,6 +122,7 @@ struct AhImpl {
 
 SCANN_INSTANTIATE_TYPED_CLASS(extern, AhImpl);
 
+// AH训练接口，转发到实现结构体
 template <typename T>
 StatusOr<std::vector<DenseDataset<double>>> TrainAsymmetricHashing(
     const TypedDataset<T>& dataset,
@@ -121,6 +131,7 @@ StatusOr<std::vector<DenseDataset<double>>> TrainAsymmetricHashing(
   return AhImpl<T>::TrainAsymmetricHashing(dataset, opts, std::move(pool));
 }
 
+// AH编码接口，转发到实现结构体（Datapoint<uint8_t>输出）
 template <typename T>
 Status IndexDatapoint(const DatapointPtr<T>& input,
                       const ChunkingProjection<T>& projection,
@@ -131,6 +142,7 @@ Status IndexDatapoint(const DatapointPtr<T>& input,
                                    centers, result);
 }
 
+// AH编码接口，转发到实现结构体（MutableSpan<uint8_t>输出）
 template <typename T>
 Status IndexDatapoint(const DatapointPtr<T>& input,
                       const ChunkingProjection<T>& projection,
@@ -141,6 +153,7 @@ Status IndexDatapoint(const DatapointPtr<T>& input,
                                    centers, result);
 }
 
+// 查找表创建接口，转发到实现结构体
 template <typename T>
 StatusOr<std::vector<float>> CreateRawFloatLookupTable(
     const DatapointPtr<T>& query, const ChunkingProjection<T>& projection,
@@ -153,11 +166,13 @@ StatusOr<std::vector<float>> CreateRawFloatLookupTable(
       num_clusters_per_block);
 }
 
+// 固定点查找表偏置计算
 template <typename Uint>
 inline constexpr Uint FixedPointBias() {
   return static_cast<Uint>(1) << ((sizeof(Uint) * 8) - 1);
 }
 
+// 查找表float转定点类型
 template <typename T>
 std::vector<T> ConvertLookupToFixedPoint(
     ConstSpan<float> raw_lookup,
@@ -174,6 +189,7 @@ extern template vector<uint16_t> ConvertLookupToFixedPoint<uint16_t>(
     const AsymmetricHasherConfig::FixedPointLUTConversionOptions&,
     float* multiplier);
 
+// 查找表float转定点类型（无选项）
 template <typename T>
 vector<T> ConvertLookupToFixedPoint(ConstSpan<float> raw_lookup,
                                     float* multiplier) {
@@ -182,8 +198,10 @@ vector<T> ConvertLookupToFixedPoint(ConstSpan<float> raw_lookup,
       multiplier);
 }
 
+// 判断查找表是否可用int16累加器
 bool CanUseInt16Accumulator(ConstSpan<uint8_t> lookup_table, size_t num_blocks);
 
+// 计算查找距离的最大值（定点类型特化）
 template <typename LookupElement>
 inline enable_if_t<IsIntegerType<LookupElement>(), int32_t>
 ComputePossiblyFixedPointMaxDistance(float float_max_distance,
@@ -198,6 +216,7 @@ ComputePossiblyFixedPointMaxDistance(float float_max_distance,
   }
 }
 
+// 计算查找距离的最大值（浮点类型特化）
 template <typename LookupElement>
 inline enable_if_t<IsFloatingType<LookupElement>(), float>
 ComputePossiblyFixedPointMaxDistance(float float_max_distance,
@@ -205,24 +224,29 @@ ComputePossiblyFixedPointMaxDistance(float float_max_distance,
   return float_max_distance;
 }
 
+// 创建打包后的定点数据集
 std::vector<uint8_t> CreatePackedDataset(
-    const DenseDataset<uint8_t>& hashed_database);
+  const DenseDataset<uint8_t>& hashed_database);
 
+// 距离类型辅助模板，uint8/uint16特化为int32
 template <typename LookupElement>
 struct DistanceType {
   using type = float;
 };
 
+// uint8特化
 template <>
 struct DistanceType<uint8_t> {
   using type = int32_t;
 };
 
+// uint16特化
 template <>
 struct DistanceType<uint16_t> {
   using type = int32_t;
 };
 
+// 查找结果后处理并加入TopN容器
 template <typename TopN, typename Distance, typename DistancePostprocess>
 class AddPostprocessedValueToTopN {
  public:
@@ -253,6 +277,7 @@ class AddPostprocessedValueToTopN {
   DistancePostprocess postprocess_;
 };
 
+// 查找迭代器，支持循环展开优化
 template <size_t kUnrollFactorParam, typename Functor>
 class UnrestrictedIndexIterator {
  public:
@@ -284,6 +309,7 @@ class UnrestrictedIndexIterator {
   Functor functor_;
 };
 
+// 查找距离填充迭代器，支持循环展开优化
 template <size_t kUnrollFactorParam, typename Functor>
 class PopulateDistancesIterator {
  public:
@@ -324,6 +350,7 @@ extern template class PopulateDistancesIterator<6, IdentityPostprocessFunctor>;
 extern template class PopulateDistancesIterator<6, AddBiasFunctor>;
 extern template class PopulateDistancesIterator<6, LimitedInnerFunctor>;
 
+// 计算总偏置（uint8/uint16特化）
 template <typename T>
 uint32_t ComputeTotalBias(size_t num_blocks) {
   return 0;
@@ -339,19 +366,23 @@ inline uint32_t ComputeTotalBias<uint8_t>(size_t num_blocks) {
   return num_blocks * FixedPointBias<uint8_t>();
 }
 
+// 类型辅助：整数转无符号，float保持不变
 template <typename T>
 struct make_unsigned_if_int_struct {
   using type = make_unsigned_t<T>;
 };
 
+// float特化
 template <>
 struct make_unsigned_if_int_struct<float> {
   using type = float;
 };
 
+// 类型辅助别名
 template <typename T>
 using make_unsigned_if_int_t = typename make_unsigned_if_int_struct<T>::type;
 
+// AH查找主实现，支持循环展开和预取优化
 template <typename DatasetView, typename LookupElement,
           size_t kCompileTimeNumCenters, typename IndexIterator, bool kPrefetch>
 SCANN_OUTLINE void
@@ -467,6 +498,7 @@ GetNeighborsViaAsymmetricDistanceWithCompileTimeNumCentersImpl(
   }
 }
 
+// AH查找入口，自动选择查找实现
 template <typename DatasetView, typename LookupElement, typename IndexIterator,
           bool kPrefetch = false>
 SCANN_INLINE void GetNeighborsViaAsymmetricDistanceWithCompileTimeNumCenters(
@@ -484,6 +516,7 @@ SCANN_INLINE void GetNeighborsViaAsymmetricDistanceWithCompileTimeNumCenters(
       lookup, runtime_num_centers, hashed_database, it);
 }
 
+// 宏定义：辅助模板实例化
 #define SCANN_SINGLE_ARG(...) __VA_ARGS__
 
 #define SCANN_INSTANTIATE_AH_FUNCTION_IMPL0(                                   \
@@ -563,6 +596,7 @@ SCANN_INLINE void GetNeighborsViaAsymmetricDistanceWithCompileTimeNumCenters(
 
 SCANN_INSTANTIATE_AH_FUNCTION(extern);
 
+// 查找结果距离反向缩放转换
 template <typename TopNsrc, typename TopNdst>
 inline void DistanceTranslateWithMultiplier(const TopNsrc& top_n_src,
                                             const float multiplier,

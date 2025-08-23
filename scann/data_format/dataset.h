@@ -39,10 +39,14 @@
 
 namespace research_scann {
 
+
+// TypedDataset：数据集模板基类，支持不同类型数据点
 template <typename T>
 class TypedDataset;
+// 稠密数据集，所有数据点均有完整维度
 template <typename T>
 class DenseDataset;
+// 稀疏数据集，仅存储非零维度
 template <typename T>
 class SparseDataset;
 
@@ -50,123 +54,141 @@ class Dataset : public VirtualDestructor {
  public:
   SCANN_DECLARE_MOVE_ONLY_CLASS(Dataset);
 
+  // 构造函数，默认使用空 docid 集合
   Dataset() : docids_(make_shared<VariableLengthDocidCollection>()) {}
 
+  // 构造函数，使用指定 docid 集合
   explicit Dataset(unique_ptr<DocidCollectionInterface> docids)
       : docids_(std::move(docids)) {
     DCHECK(docids_);
   }
 
+  // 数据集大小（数据点数量）
   DatapointIndex size() const { return docids_->size(); }
 
+  // 判断数据集是否为空
   bool empty() const { return size() == 0; }
 
+  // 数据集维度
   DimensionIndex dimensionality() const { return dimensionality_; }
 
+  // 活跃维度数（抽象接口，稠密/稀疏实现不同）
   virtual DimensionIndex NumActiveDimensions() const = 0;
 
+  // 是否为稠密数据集（抽象接口）
   virtual bool IsDense() const = 0;
 
+  // 是否为稀疏数据集
   bool IsSparse() const { return !IsDense(); }
 
+  // 设置数据集维度（抽象接口）
   virtual void set_dimensionality(DimensionIndex dimensionality) = 0;
 
+  // 预分配数据点空间（可选实现）
   virtual void Reserve(size_t n_points) {}
 
+  // 预分配 docid 空间
   void ReserveDocids(size_t n_docids) { docids_->Reserve(n_docids); }
 
+  // 获取指定索引的 docid
   string_view GetDocid(size_t index) const { return docids_->Get(index); }
 
+  // 获取 docid 集合智能指针
   const shared_ptr<DocidCollectionInterface>& docids() const { return docids_; }
 
+  // 释放 docid 集合，返回原有 docids 并重置为空 docids
   virtual shared_ptr<DocidCollectionInterface> ReleaseDocids();
 
+  // 清空数据集（抽象接口）
   virtual void clear() = 0;
 
+  // 获取数据类型标签（float/double/int 等）
   virtual research_scann::TypeTag TypeTag() const = 0;
 
+  // 获取指定索引的数据点（double/float），以及稠密数据点接口
   virtual void GetDatapoint(size_t index, Datapoint<double>* result) const = 0;
-
   virtual void GetDatapoint(size_t index, Datapoint<float>* result) const = 0;
-
   virtual void GetDenseDatapoint(size_t index,
                                  Datapoint<double>* result) const = 0;
-
   virtual void GetDenseDatapoint(size_t index,
                                  Datapoint<float>* result) const = 0;
-
+  // 预取指定索引数据点到本地缓存（加速访问）
   virtual void Prefetch(size_t index) const = 0;
-
+  // 计算两个数据点之间的距离（抽象接口）
   virtual double GetDistance(const DistanceMeasure& dist, size_t vec1_index,
                              size_t vec2_index) const = 0;
-
+  // 按维度计算均值/方差（全量/子集）
   virtual Status MeanByDimension(Datapoint<double>* result) const = 0;
-
   virtual Status MeanByDimension(ConstSpan<DatapointIndex> subset,
                                  Datapoint<double>* result) const = 0;
-
   virtual void MeanVarianceByDimension(Datapoint<double>* means,
                                        Datapoint<double>* variances) const = 0;
-
   virtual void MeanVarianceByDimension(ConstSpan<DatapointIndex> subset,
                                        Datapoint<double>* means,
                                        Datapoint<double>* variances) const = 0;
-
+  // 数据归一化（单位 L2/零均值单位方差）
   virtual Status NormalizeUnitL2() = 0;
-
   virtual Status NormalizeZeroMeanUnitVariance() = 0;
 
+  // 当前归一化类型
   Normalization normalization() const { return normalization_; }
-
+  // 按指定归一化类型归一化
   Status NormalizeByTag(Normalization tag);
-
+  // 设置归一化类型标签
   void set_normalization_tag(Normalization tag) { normalization_ = tag; }
 
+  // 获取/设置数据集打包策略（如二值、半字节等）
   HashedItem::PackingStrategy packing_strategy() const {
     return packing_strategy_;
   }
-
   virtual void set_packing_strategy(
       HashedItem::PackingStrategy packing_strategy) {
     packing_strategy_ = packing_strategy;
   }
 
+  // 是否为浮点型数据集
   virtual bool is_float() const = 0;
-
+  // 是否为二值数据集
   bool is_binary() const { return packing_strategy_ == HashedItem::BINARY; }
-
+  // 设置为二值数据集
   virtual void set_is_binary(bool val) {
     packing_strategy_ = val ? HashedItem::BINARY : HashedItem::NONE;
   }
 
+  // 收缩内存到实际大小
   virtual void ShrinkToFit() {}
 
+  // docid 数组容量
   size_t DocidArrayCapacity() const { return docids_->capacity(); }
-
+  // 计算数据集占用内存（不含 docids）
   virtual size_t MemoryUsageExcludingDocids() const = 0;
-
+  // docid 占用内存
   size_t DocidMemoryUsage() const { return docids_->MemoryUsage(); }
 
+  // 绑定 docid 集合到数据集（需与当前 size 匹配）
   void AttachDocidCollection(shared_ptr<DocidCollectionInterface> docids) {
     DCHECK(docids);
     DCHECK_EQ(docids->size(), size());
     set_docids_no_checks(docids);
   }
 
+  // Mutator：数据集可变操作接口
   class Mutator;
+  // 获取未指定类型的 Mutator
   virtual StatusOr<typename Dataset::Mutator*> GetUntypedMutator() const = 0;
 
- protected:
+protected:
+  // 直接设置维度（不做一致性检查）
   void set_dimensionality_no_checks(DimensionIndex dim) {
     dimensionality_ = dim;
   }
-
+  // 直接设置 docid 集合（不做一致性检查）
   void set_docids_no_checks(shared_ptr<DocidCollectionInterface> docids) {
     docids_ = std::move(docids);
   }
-
+  // 设置归一化类型
   void set_normalization(Normalization norm) { normalization_ = norm; }
-
+  // 追加 docid 到集合
   Status AppendDocid(string_view docid) { return docids_->Append(docid); }
 
  private:
@@ -181,17 +203,19 @@ class Dataset : public VirtualDestructor {
 
 class Dataset::Mutator : public VirtualDestructor {
  public:
+  // 移除指定 docid 的数据点
   virtual Status RemoveDatapoint(string_view docid) = 0;
-
+  // 查找 docid 对应的数据点索引
   virtual bool LookupDatapointIndex(string_view docid,
                                     DatapointIndex* index) const = 0;
-
+  // 预分配空间
   virtual void Reserve(size_t size) = 0;
-
+  // 按索引移除数据点
   virtual Status RemoveDatapoint(DatapointIndex index) = 0;
 };
 
 template <typename T>
+// TypedDataset：数据集模板基类，支持泛型数据点操作
 class TypedDataset : public Dataset {
  public:
   SCANN_DECLARE_MOVE_ONLY_CLASS(TypedDataset);
@@ -272,6 +296,7 @@ class TypedDataset<T>::Mutator : public Dataset::Mutator {
 };
 
 template <typename T>
+// DenseDataset：稠密数据集实现，所有数据点均有完整维度
 class DenseDataset final : public TypedDataset<T> {
  public:
   SCANN_DECLARE_MOVE_ONLY_CLASS(DenseDataset);
@@ -413,6 +438,7 @@ template <typename T>
 class RandomDatapointsSubView;
 
 template <typename T>
+// DenseDatasetView：稠密数据集视图抽象，支持子视图/随机子集
 class DenseDatasetView : VirtualDestructor {
  public:
   DenseDatasetView() = default;
@@ -443,6 +469,7 @@ class DenseDatasetView : VirtualDestructor {
 };
 
 template <typename T>
+// DefaultDenseDatasetView：默认稠密数据集视图实现
 class DefaultDenseDatasetView : public DenseDatasetView<T> {
  public:
   DefaultDenseDatasetView() = default;
@@ -491,6 +518,7 @@ class DefaultDenseDatasetView : public DenseDatasetView<T> {
 };
 
 template <typename T>
+// DenseDatasetSubView：稠密数据集子视图实现
 class DenseDatasetSubView : public DenseDatasetView<T> {
  public:
   DenseDatasetSubView(const DenseDatasetView<T>* parent, size_t offset,
@@ -524,6 +552,7 @@ class DenseDatasetSubView : public DenseDatasetView<T> {
 };
 
 template <typename T>
+// RandomDatapointsSubView：稠密数据集随机子集视图实现
 class RandomDatapointsSubView : public DenseDatasetView<T> {
  public:
   RandomDatapointsSubView(const DenseDatasetView<T>* parent,
@@ -553,6 +582,7 @@ class RandomDatapointsSubView : public DenseDatasetView<T> {
 };
 
 template <typename T>
+// StridedDatasetView：支持 stride 步长的稠密数据集视图
 class StridedDatasetView final : public DenseDatasetView<T> {
  public:
   StridedDatasetView(const T* ptr, size_t dimension, size_t stride, size_t size)
@@ -581,6 +611,7 @@ class StridedDatasetView final : public DenseDatasetView<T> {
 };
 
 template <typename T>
+// SpanDenseDatasetView：基于 Span 的稠密数据集视图
 class SpanDenseDatasetView final : public DenseDatasetView<T> {
  public:
   SpanDenseDatasetView(ConstSpan<T> span, size_t dimension)
@@ -604,6 +635,7 @@ class SpanDenseDatasetView final : public DenseDatasetView<T> {
 };
 
 template <typename T>
+// SparseDataset：稀疏数据集实现，仅存储非零维度
 class SparseDataset final : public TypedDataset<T> {
  public:
   SCANN_DECLARE_MOVE_ONLY_CLASS(SparseDataset);

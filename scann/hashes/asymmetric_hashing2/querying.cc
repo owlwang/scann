@@ -49,10 +49,12 @@ enum LookupTableType : uint8_t {
 
 }
 
+// 查找表序列化为字节流，支持 float/int16/int8 三种类型
 absl::StatusOr<std::vector<uint8_t>> LookupTable::ToBytes() const {
   std::vector<uint8_t> bytes;
   size_t extra;
 
+  // 仅允许一种查找表类型非空
   const int non_empty_lookup_tables = !float_lookup_table.empty() +
                                       !int16_lookup_table.empty() +
                                       !int8_lookup_table.empty();
@@ -62,6 +64,7 @@ absl::StatusOr<std::vector<uint8_t>> LookupTable::ToBytes() const {
         non_empty_lookup_tables));
   }
 
+  // 查找表类型编码
   LookupTableType table_type = kNone;
   if (!float_lookup_table.empty()) {
     table_type = kFloat;
@@ -72,6 +75,7 @@ absl::StatusOr<std::vector<uint8_t>> LookupTable::ToBytes() const {
   }
   bytes.push_back(table_type);
 
+  // 查找表大小编码
   uint32_t table_size = 0;
   if (table_type == kFloat) {
     table_size = float_lookup_table.size();
@@ -84,6 +88,7 @@ absl::StatusOr<std::vector<uint8_t>> LookupTable::ToBytes() const {
   bytes.resize(bytes.size() + extra);
   std::memcpy(bytes.data() + bytes.size() - extra, &table_size, extra);
 
+  // 查找表内容编码
   if (table_type == kFloat) {
     extra = float_lookup_table.size() * sizeof(float);
     bytes.resize(bytes.size() + extra);
@@ -99,6 +104,7 @@ absl::StatusOr<std::vector<uint8_t>> LookupTable::ToBytes() const {
                  int8_lookup_table.end());
   }
 
+  // 固定点乘数编码
   bool is_nan = std::isnan(fixed_point_multiplier);
   bytes.push_back(static_cast<uint8_t>(is_nan));
 
@@ -109,23 +115,27 @@ absl::StatusOr<std::vector<uint8_t>> LookupTable::ToBytes() const {
                 extra);
   }
 
+  // 是否可用 int16 累加器编码
   bytes.push_back(static_cast<uint8_t>(can_use_int16_accumulator));
 
   return bytes;
 }
 
+// 查找表反序列化，支持 float/int16/int8 三种类型
 absl::StatusOr<LookupTable> LookupTable::FromBytes(
     absl::Span<const uint8_t> bytes) {
   LookupTable table;
   size_t offset = 0;
   size_t extra;
 
+  // 查找表类型解码
   LookupTableType table_type = static_cast<LookupTableType>(bytes[offset++]);
   if (!(table_type == kFloat || table_type == kInt16 || table_type == kInt8)) {
     return absl::InvalidArgumentError(absl::StrCat(
         "invalid table type encountered during deserialization: ", table_type));
   }
 
+  // 查找表大小解码
   uint32_t table_size;
   extra = sizeof(table_size);
   std::memcpy(&table_size, bytes.data() + offset, extra);
@@ -135,6 +145,7 @@ absl::StatusOr<LookupTable> LookupTable::FromBytes(
         "one of float/int16/int8 lookup_table must be populated");
   }
 
+  // 查找表内容解码
   if (table_type == kFloat) {
     table.float_lookup_table.resize(table_size);
     extra = table_size * sizeof(float);
@@ -152,6 +163,7 @@ absl::StatusOr<LookupTable> LookupTable::FromBytes(
     offset += table_size;
   }
 
+  // 固定点乘数解码
   bool is_nan = static_cast<bool>(bytes[offset]);
   offset++;
 
@@ -163,22 +175,25 @@ absl::StatusOr<LookupTable> LookupTable::FromBytes(
     offset += extra;
   }
 
+  // 是否可用 int16 累加器解码
   table.can_use_int16_accumulator = static_cast<bool>(bytes[offset]);
 
   return table;
 }
 
+// 将哈希数据集打包为 PackedDataset，便于高效存储与访问
 PackedDataset CreatePackedDataset(
-    const DenseDataset<uint8_t>& hashed_database) {
+  const DenseDataset<uint8_t>& hashed_database) {
   PackedDataset result;
   result.bit_packed_data =
-      asymmetric_hashing_internal::CreatePackedDataset(hashed_database);
+    asymmetric_hashing_internal::CreatePackedDataset(hashed_database);
   result.num_datapoints = hashed_database.size();
   result.num_blocks =
-      (!hashed_database.empty()) ? (hashed_database[0].nonzero_entries()) : 0;
+    (!hashed_database.empty()) ? (hashed_database[0].nonzero_entries()) : 0;
   return result;
 }
 
+// 解包 PackedDatasetView 为普通哈希数据集
 DenseDataset<uint8_t> UnpackDataset(const PackedDatasetView& packed) {
   const size_t num_dim = packed.num_blocks, num_dp = packed.num_datapoints;
 
@@ -199,6 +214,7 @@ DenseDataset<uint8_t> UnpackDataset(const PackedDatasetView& packed) {
     }
   }
 
+  // 处理最后一块不足整块的数据
   if (num_dp % kNumDatapointsPerBlock != 0) {
     const int out_idx = num_dp - (num_dp % kNumDatapointsPerBlock);
     for (int dim = 0; dim < num_dim; dim++) {
@@ -216,6 +232,7 @@ DenseDataset<uint8_t> UnpackDataset(const PackedDatasetView& packed) {
   return DenseDataset<uint8_t>(std::move(unpacked), packed.num_datapoints);
 }
 
+// 创建 PackedDatasetView 视图，便于只读访问
 PackedDatasetView CreatePackedDatasetView(const PackedDataset& packed_dataset) {
   PackedDatasetView result;
   result.bit_packed_data = absl::MakeConstSpan(packed_dataset.bit_packed_data);
@@ -224,10 +241,12 @@ PackedDatasetView CreatePackedDatasetView(const PackedDataset& packed_dataset) {
   return result;
 }
 
+// Queryer 基类构造，保存查找距离度量
 AsymmetricQueryerBase::AsymmetricQueryerBase(
-    shared_ptr<const DistanceMeasure> lookup_distance)
-    : lookup_distance_(std::move(lookup_distance)) {}
+  shared_ptr<const DistanceMeasure> lookup_distance)
+  : lookup_distance_(std::move(lookup_distance)) {}
 
+// Queryer 模板类构造，保存投影、距离度量、模型
 template <typename T>
 AsymmetricQueryer<T>::AsymmetricQueryer(
     shared_ptr<const ChunkingProjection<T>> projector,
@@ -237,6 +256,8 @@ AsymmetricQueryer<T>::AsymmetricQueryer(
       projector_(std::move(projector)),
       model_(std::move(model)) {}
 
+template <typename T>
+// 创建查找表，支持 float/int8/int16 三种类型
 template <typename T>
 StatusOr<LookupTable> AsymmetricQueryer<T>::CreateLookupTable(
     const DatapointPtr<T>& query,
@@ -256,6 +277,8 @@ StatusOr<LookupTable> AsymmetricQueryer<T>::CreateLookupTable(
   }
 }
 
+template <typename Dataset>
+// 设置 LUT16 哈希码到打包数据集
 template <typename Dataset>
 Status SetLUT16Hash(const DatapointPtr<uint8_t>& hashed, const size_t index,
                     Dataset* __restrict__ packed_struct) {
@@ -284,6 +307,8 @@ Status SetLUT16Hash(const DatapointPtr<uint8_t>& hashed, const size_t index,
   return OkStatus();
 }
 
+template <typename Dataset>
+// 从打包数据集获取 LUT16 哈希码
 template <typename Dataset>
 Datapoint<uint8_t> GetLUT16Hash(const size_t index,
                                 const Dataset& packed_dataset) {
@@ -320,7 +345,10 @@ template Datapoint<uint8_t> GetLUT16Hash<PackedDataset>(
     size_t index, const PackedDataset& packed_dataset);
 template Datapoint<uint8_t> GetLUT16Hash<PackedDatasetMutableView>(
     size_t index, const PackedDatasetMutableView& packed_dataset);
+// 实例化所有支持类型的 AsymmetricQueryer 模板
 SCANN_INSTANTIATE_TYPED_CLASS(, AsymmetricQueryer);
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann

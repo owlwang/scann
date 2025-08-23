@@ -33,26 +33,34 @@
 namespace research_scann {
 namespace asymmetric_hashing2 {
 
+// AH 训练参数类，支持投影、量化距离、参数校验等
 template <typename T>
 class TrainingOptions : public TrainingOptionsTyped<T> {
  public:
+  // 通过投影和量化距离构造训练参数
   TrainingOptions(shared_ptr<const ChunkingProjection<T>> projector,
                   shared_ptr<const DistanceMeasure> quantization_distance)
       : TrainingOptionsTyped<T>(projector, std::move(quantization_distance)) {}
 
+  // 通过配置、量化距离、数据集构造训练参数
   TrainingOptions(const AsymmetricHasherConfig& config,
                   shared_ptr<const DistanceMeasure> quantization_distance,
                   const TypedDataset<T>& dataset, ThreadPool* pool = nullptr);
 
+  // 校验训练参数合法性
   Status Validate() const;
 
  private:
+  // 构造错误状态
   Status constructor_error_ = OkStatus();
 };
 
+// TrainingOptions 模板类显式实例化声明
 SCANN_INSTANTIATE_TYPED_CLASS(extern, TrainingOptions);
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann
 
 #endif

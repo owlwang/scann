@@ -27,17 +27,21 @@
 
 namespace research_scann {
 
+// HetergenousDocidLookupMap：支持 docid 与索引双向查找的集合实现
 class HetergenousDocidLookupMap : public DocidLookupMap {
  public:
+  // 构造函数，初始化 hash set，支持 docid/索引混合查找
   explicit HetergenousDocidLookupMap(const DocidCollectionInterface* docids)
       : DocidLookupMap(docids),
         heterogeneous_index_set_({}, HeterogeneousHash{docids_},
                                  HeterogeneousEqual{docids_}) {}
 
+  // 清空所有索引
   void Clear() final { heterogeneous_index_set_.clear(); }
-
+  // 预分配 hash set 空间
   void Reserve(size_t size) final { heterogeneous_index_set_.reserve(size); }
 
+  // 查找 docid 对应的数据点索引，返回是否找到
   bool LookupDatapointIndex(string_view docid,
                             DatapointIndex* idx) const final {
     auto it = heterogeneous_index_set_.find(docid);
@@ -48,6 +52,7 @@ class HetergenousDocidLookupMap : public DocidLookupMap {
     return true;
   }
 
+  // 批量查找 docid 索引，支持预取和回调
   void LookupDatapointIndices(size_t num_docids, DocidGetter docid_getter,
                               LookupCallback callback) const final {
     auto prefetch_cb = [&](size_t idx, size_t) {
@@ -61,11 +66,13 @@ class HetergenousDocidLookupMap : public DocidLookupMap {
     };
 
     constexpr size_t kBatchSize = 32;
+    // 多阶段批量流水线，先预取再查找，提升性能
     RunMultiStageBatchPipeline<kBatchSize, decltype(prefetch_cb),
                                decltype(lookup_cb)>(
         num_docids, {std::move(prefetch_cb), std::move(lookup_cb)});
   }
 
+  // 移除指定 docid 的数据点
   Status RemoveDatapoint(string_view docid) final {
     auto it = heterogeneous_index_set_.find(docid);
     if (it == heterogeneous_index_set_.end()) {
@@ -75,6 +82,7 @@ class HetergenousDocidLookupMap : public DocidLookupMap {
     return OkStatus();
   }
 
+  // 移除指定索引的数据点
   Status RemoveDatapoint(DatapointIndex dp_idx) final {
     if (dp_idx >= docids_->size()) {
       return OutOfRangeError(
@@ -89,6 +97,7 @@ class HetergenousDocidLookupMap : public DocidLookupMap {
     return OkStatus();
   }
 
+  // 添加 docid 与索引的映射关系
   Status AddDatapoint(string_view docid, DatapointIndex dp_idx) final {
     auto it = heterogeneous_index_set_.find(docid);
     if (it != heterogeneous_index_set_.end()) {
@@ -112,9 +121,11 @@ class HetergenousDocidLookupMap : public DocidLookupMap {
     return OkStatus();
   }
 
+  // 返回实现名称
   string_view ImplName() const final { return "scann_heterogeneous"; }
 
  private:
+  // HeterogeneousHash：支持 docid/索引混合 hash 的结构
   struct HeterogeneousHash {
     using is_transparent = void;
 
@@ -128,6 +139,7 @@ class HetergenousDocidLookupMap : public DocidLookupMap {
     const DocidCollectionInterface* docids = nullptr;
   };
 
+  // HeterogeneousEqual：支持 docid/索引混合相等判断的结构
   struct HeterogeneousEqual {
     using is_transparent = void;
 
@@ -155,8 +167,8 @@ absl::StatusOr<std::unique_ptr<DocidLookupMap>> CreateDocidLookupMap(
     DocidCollectionInterface* docids) {
   std::unique_ptr<DocidLookupMap> map;
 
+  // 构建 docid 查找 map，预分配空间并批量添加 docid 映射
   map = std::make_unique<HetergenousDocidLookupMap>(docids);
-
   map->Reserve(docids->size());
   for (DatapointIndex i = 0; i < docids->size(); ++i) {
     string_view docid = docids->Get(i);
@@ -164,7 +176,6 @@ absl::StatusOr<std::unique_ptr<DocidLookupMap>> CreateDocidLookupMap(
       SCANN_RETURN_IF_ERROR(map->AddDatapoint(docid, i));
     }
   }
-
   return map;
 }
 

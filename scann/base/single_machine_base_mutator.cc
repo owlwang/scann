@@ -38,23 +38,28 @@ bool SameDocidsInstance(
 
 }  // namespace
 
+// 变异器准备，获取各数据结构的 mutator
 template <typename T>
 Status SingleMachineSearcherBase<T>::Mutator::PrepareForBaseMutation(
     SingleMachineSearcherBase<T>* searcher) {
   searcher_ = searcher;
   searcher_->mutator_outstanding_ = true;
+  // 获取原始数据集 mutator
   if (searcher->dataset_) {
     SCANN_ASSIGN_OR_RETURN(dataset_mutator_, searcher->dataset_->GetMutator());
   }
+  // 获取哈希数据集 mutator
   if (searcher->hashed_dataset_) {
     SCANN_ASSIGN_OR_RETURN(hashed_dataset_mutator_,
                            searcher->hashed_dataset_->GetMutator());
   }
+  // 获取重排序辅助 mutator
   if (searcher_->reordering_helper_ &&
       searcher_->reordering_helper_->owns_mutation_data_structures()) {
     SCANN_ASSIGN_OR_RETURN(reordering_mutator_,
                            searcher->reordering_helper_->GetMutator());
   }
+  // 获取 docid mutator（需排除与数据集绑定的情况）
   if (searcher->docids_ &&
       !SameDocidsInstance(searcher->docids_, searcher->dataset_.get()) &&
       !SameDocidsInstance(searcher->docids_, searcher->hashed_dataset_.get())) {
@@ -63,6 +68,7 @@ Status SingleMachineSearcherBase<T>::Mutator::PrepareForBaseMutation(
   return OkStatus();
 }
 
+// 获取下一个可用的数据点索引，确保所有相关结构大小一致
 template <typename T>
 StatusOr<DatapointIndex>
 SingleMachineSearcherBase<T>::Mutator::GetNextDatapointIndex() const {
@@ -70,6 +76,7 @@ SingleMachineSearcherBase<T>::Mutator::GetNextDatapointIndex() const {
   if (searcher_->dataset_) {
     result = searcher_->dataset_->size();
 
+    // 校验 docids 和哈希数据集大小一致
     if (searcher_->docids_)
       SCANN_RET_CHECK_EQ(result, searcher_->docids_->size());
     if (searcher_->hashed_dataset_) {
@@ -85,6 +92,7 @@ SingleMachineSearcherBase<T>::Mutator::GetNextDatapointIndex() const {
   return result;
 }
 
+// 校验数据点是否有效（无 NaN/Inf）
 template <typename T>
 Status SingleMachineSearcherBase<T>::Mutator::ValidateForUpdateOrAdd(
     const DatapointPtr<T>& dptr, string_view docid,
@@ -92,6 +100,7 @@ Status SingleMachineSearcherBase<T>::Mutator::ValidateForUpdateOrAdd(
   if constexpr (std::is_floating_point_v<T>) {
     auto vs = dptr.values_span();
     for (size_t i : IndicesOf(vs)) {
+      // 检查每个值是否为有限数
       if (!ABSL_PREDICT_TRUE(std::isfinite(vs[i]))) {
         return InvalidArgumentError(absl::StrCat(
             "NaN or infinity found in ScaNN update.   value = ", vs[i],
@@ -104,11 +113,13 @@ Status SingleMachineSearcherBase<T>::Mutator::ValidateForUpdateOrAdd(
   return OkStatus();
 }
 
+// 校验更新操作的索引和数据点有效性
 template <typename T>
 Status SingleMachineSearcherBase<T>::Mutator::ValidateForUpdate(
     const DatapointPtr<T>& dptr, DatapointIndex idx,
     const MutationOptions& mo) const {
   SCANN_ASSIGN_OR_RETURN(DatapointIndex next_idx, GetNextDatapointIndex());
+  // 检查索引是否越界
   if (idx >= next_idx) {
     return InvalidArgumentError(absl::StrCat(
         "Datapoint index ", idx,
@@ -117,28 +128,34 @@ Status SingleMachineSearcherBase<T>::Mutator::ValidateForUpdate(
 
   StatusOr<string_view> docid = searcher_->GetDocid(idx);
 
+  // 校验数据点内容
   return ValidateForUpdateOrAdd(dptr, docid.ok() ? *docid : "<UNKNOWN DOCID>",
                                 mo);
 }
 
+// 校验新增操作的 docid 唯一性和数据点有效性
 template <typename T>
 Status SingleMachineSearcherBase<T>::Mutator::ValidateForAdd(
     const DatapointPtr<T>& dptr, string_view docid,
     const MutationOptions& mo) const {
   DatapointIndex dp_idx = kInvalidDatapointIndex;
+  // 检查 docid 是否已存在
   if (LookupDatapointIndex(docid, &dp_idx)) {
     return FailedPreconditionError(
         absl::StrCat("Cannot add docid that already exists: ", docid));
   }
 
   SCANN_RETURN_IF_ERROR(GetNextDatapointIndex().status());
+  // 校验数据点内容
   return ValidateForUpdateOrAdd(dptr, docid, mo);
 }
 
+// 校验移除操作的索引有效性
 template <typename T>
 Status SingleMachineSearcherBase<T>::Mutator::ValidateForRemove(
     DatapointIndex idx) const {
   SCANN_ASSIGN_OR_RETURN(DatapointIndex next_idx, GetNextDatapointIndex());
+  // 检查索引是否越界
   if (idx >= next_idx) {
     return InvalidArgumentError(absl::StrCat(
         "Datapoint index ", idx,
@@ -147,6 +164,7 @@ Status SingleMachineSearcherBase<T>::Mutator::ValidateForRemove(
   return OkStatus();
 }
 
+// 校验新增操作的哈希数据点选项
 template <typename T>
 Status SingleMachineSearcherBase<T>::Mutator::CheckAddDatapointToBaseOptions(
     const MutateBaseOptions& opts) const {
@@ -158,6 +176,7 @@ Status SingleMachineSearcherBase<T>::Mutator::CheckAddDatapointToBaseOptions(
   return OkStatus();
 }
 
+// 获取基础数据集中的数据点
 template <typename T>
 absl::StatusOr<Datapoint<T>>
 SingleMachineSearcherBase<T>::Mutator::GetDatapointFromBase(
@@ -165,6 +184,7 @@ SingleMachineSearcherBase<T>::Mutator::GetDatapointFromBase(
   if (dataset_mutator_) {
     return dataset_mutator_->GetDatapoint(i);
   }
+  // 哈希数据集暂不支持直接获取数据点
   if (hashed_dataset_mutator_) {
     return UnimplementedError(
         "GetDatapointFromBase not implemented for hashed dataset.");
@@ -172,6 +192,7 @@ SingleMachineSearcherBase<T>::Mutator::GetDatapointFromBase(
   return UnimplementedError("GetDatapointFromBase not implemented.");
 }
 
+// 新增数据点到基础数据结构
 template <typename T>
 StatusOr<DatapointIndex>
 SingleMachineSearcherBase<T>::Mutator::AddDatapointToBase(
@@ -179,16 +200,20 @@ SingleMachineSearcherBase<T>::Mutator::AddDatapointToBase(
     const MutateBaseOptions& opts) {
   SCANN_RETURN_IF_ERROR(CheckAddDatapointToBaseOptions(opts));
   SCANN_ASSIGN_OR_RETURN(const DatapointIndex result, GetNextDatapointIndex());
+  // 原始数据集新增
   if (dataset_mutator_) {
     SCANN_RETURN_IF_ERROR(dataset_mutator_->AddDatapoint(dptr, docid));
   }
+  // 哈希数据集新增
   if (hashed_dataset_mutator_) {
     SCANN_RETURN_IF_ERROR(
         hashed_dataset_mutator_->AddDatapoint(*opts.hashed, docid));
   }
+  // docid 集合新增
   if (docid_mutator_) {
     SCANN_RETURN_IF_ERROR(docid_mutator_->AddDatapoint(docid));
   }
+  // 重排序辅助新增
   if (reordering_mutator_) {
     SCANN_ASSIGN_OR_RETURN(auto idx, reordering_mutator_->AddDatapoint(dptr));
     SCANN_RET_CHECK_EQ(result, idx);
@@ -196,25 +221,30 @@ SingleMachineSearcherBase<T>::Mutator::AddDatapointToBase(
   return result;
 }
 
+// 更新基础数据结构中的数据点
 template <typename T>
 Status SingleMachineSearcherBase<T>::Mutator::UpdateDatapointInBase(
     const DatapointPtr<T>& dptr, DatapointIndex idx,
     const MutateBaseOptions& opts) {
   SCANN_RETURN_IF_ERROR(CheckAddDatapointToBaseOptions(opts));
   const bool mutate_values_vector = true;
+  // 原始数据集更新
   if (dataset_mutator_ && mutate_values_vector) {
     SCANN_RETURN_IF_ERROR(dataset_mutator_->UpdateDatapoint(dptr, idx));
   }
+  // 哈希数据集更新
   if (hashed_dataset_mutator_ && mutate_values_vector) {
     SCANN_RETURN_IF_ERROR(
         hashed_dataset_mutator_->UpdateDatapoint(*opts.hashed, idx));
   }
+  // 重排序辅助更新
   if (reordering_mutator_ && mutate_values_vector) {
     SCANN_RETURN_IF_ERROR(reordering_mutator_->UpdateDatapoint(dptr, idx));
   }
   return OkStatus();
 }
 
+// 移除基础数据结构中的数据点
 template <typename T>
 StatusOr<DatapointIndex>
 SingleMachineSearcherBase<T>::Mutator::RemoveDatapointFromBase(
@@ -222,18 +252,22 @@ SingleMachineSearcherBase<T>::Mutator::RemoveDatapointFromBase(
   SCANN_RETURN_IF_ERROR(GetNextDatapointIndex().status());
 
   DatapointIndex result = kInvalidDatapointIndex;
+  // 原始数据集移除
   if (dataset_mutator_) {
     SCANN_RETURN_IF_ERROR(dataset_mutator_->RemoveDatapoint(idx));
     result = searcher_->dataset_->size();
   }
+  // 哈希数据集移除
   if (hashed_dataset_mutator_) {
     SCANN_RETURN_IF_ERROR(hashed_dataset_mutator_->RemoveDatapoint(idx));
     result = searcher_->hashed_dataset_->size();
   }
+  // docid 集合移除
   if (docid_mutator_) {
     SCANN_RETURN_IF_ERROR(docid_mutator_->RemoveDatapoint(idx));
     result = searcher_->docids_->size();
   }
+  // 重排序辅助移除
   if (reordering_mutator_) {
     SCANN_ASSIGN_OR_RETURN(auto swapped_from,
                            reordering_mutator_->RemoveDatapoint(idx));
@@ -244,6 +278,7 @@ SingleMachineSearcherBase<T>::Mutator::RemoveDatapointFromBase(
   return result;
 }
 
+// 预留各基础数据结构空间
 template <typename T>
 void SingleMachineSearcherBase<T>::Mutator::ReserveInBase(
     DatapointIndex num_datapoints) {
@@ -253,6 +288,7 @@ void SingleMachineSearcherBase<T>::Mutator::ReserveInBase(
   if (docid_mutator_) docid_mutator_->Reserve(num_datapoints);
 }
 
+// 查找 docid 对应的数据点索引
 template <typename T>
 bool SingleMachineSearcherBase<T>::Mutator::LookupDatapointIndex(
     string_view docid, DatapointIndex* index) const {

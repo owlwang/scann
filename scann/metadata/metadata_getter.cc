@@ -22,21 +22,27 @@
 
 namespace research_scann {
 
+// 追加元数据，默认实现为空操作
 Status UntypedMetadataGetter::AppendMetadata(const GenericFeatureVector& gfv) {
   return OkStatus();
 }
 
+// 是否需要数据集，默认返回 true
 bool UntypedMetadataGetter::needs_dataset() const { return true; }
 
+// 更新元数据，默认未实现
 Status UntypedMetadataGetter::UpdateMetadata(DatapointIndex idx,
                                              const GenericFeatureVector& gfv) {
   return UnimplementedError("UpdateMetadata not implemented by default.");
 }
 
+// 移除元数据，默认未实现
 Status UntypedMetadataGetter::RemoveMetadata(DatapointIndex removed_idx) {
   return UnimplementedError("UpdateMetadata not implemented by default.");
 }
 
+// 析构函数，默认实现
 UntypedMetadataGetter::~UntypedMetadataGetter() {}
 
+// research_scann 命名空间结束
 }  // namespace research_scann

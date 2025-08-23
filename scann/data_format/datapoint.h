@@ -32,14 +32,17 @@
 
 namespace research_scann {
 
+// DatapointPtr：轻量级数据点指针，支持稀疏/稠密表示
 template <typename T>
 class DatapointPtr;
+// Datapoint：实际数据点对象，持有数据和元信息
 template <typename T>
 class Datapoint;
 
 template <>
 class DatapointPtr<NoValue> final {
  public:
+  // 构造函数：仅持有索引信息，无值
   DatapointPtr() {}
 
   DatapointPtr(const DimensionIndex* indices, const NoValue* values,
@@ -50,10 +53,13 @@ class DatapointPtr<NoValue> final {
     CHECK(!values) << "values must be nullptr";
   }
 
+  // 获取索引指针
   const DimensionIndex* indices() const { return indices_; }
+  // 获取索引 span
   ConstSpan<DimensionIndex> indices_span() const {
     return ConstSpan<DimensionIndex>(indices_, indices_ ? nonzero_entries_ : 0);
   }
+  // 无值
   bool has_values() const { return false; }
   InfiniteOneArray<NoValue> values() const {
     return InfiniteOneArray<NoValue>();
@@ -61,22 +67,29 @@ class DatapointPtr<NoValue> final {
   InfiniteOneArray<NoValue> values_span() const {
     return InfiniteOneArray<NoValue>();
   }
+  // 始终为稀疏、全1、有限
   bool IsDense() const { return false; }
   bool IsSparse() const { return true; }
   bool IsAllOnes() const { return true; }
   bool IsFinite() const { return true; }
+  // 非零元素个数
   DimensionIndex nonzero_entries() const { return nonzero_entries_; }
+  // 转为稀疏二值表示
   DatapointPtr<NoValue> ToSparseBinary() const { return *this; }
 
  private:
+  // 索引指针
   const DimensionIndex* indices_ = nullptr;
+  // 非零元素个数
   DimensionIndex nonzero_entries_ = 0;
+  // 总维度
   DimensionIndex dimensionality_ = 0;
 };
 
 template <typename T>
 class DatapointPtr final {
  public:
+  // 构造函数：支持稀疏/稠密数据点指针
   DatapointPtr() = default;
 
   DatapointPtr(const DimensionIndex* indices, const T* values,
@@ -86,35 +99,47 @@ class DatapointPtr final {
         nonzero_entries_(nonzero_entries),
         dimensionality_(dimensionality) {}
 
+  // 获取索引指针
   const DimensionIndex* indices() const { return indices_; }
 
+  // 获取索引 span
   ConstSpan<DimensionIndex> indices_span() const {
     return ConstSpan<DimensionIndex>(indices_, indices_ ? nonzero_entries_ : 0);
   }
 
+  // 获取值指针
   const T* values() const { return values_; }
 
+  // 是否有值
   bool has_values() const { return values_; }
 
+  // 获取值 span
   ConstSpan<T> values_span() const {
     return ConstSpan<T>(values_, values_ ? nonzero_entries_ : 0);
   }
 
+  // 非零元素个数
   DimensionIndex nonzero_entries() const { return nonzero_entries_; }
 
+  // 总维度
   DimensionIndex dimensionality() const { return dimensionality_; }
 
+  // 是否为稠密数据点
   bool IsDense() const { return nonzero_entries_ > 0 && indices_ == nullptr; }
 
+  // 是否为稀疏数据点
   bool IsSparse() const { return !IsDense(); }
 
+  // 是否为稀疏原点
   bool IsSparseOrigin() const { return nonzero_entries_ == 0; }
 
+  // 是否所有值为 1
   bool IsAllOnes() const {
     return std::all_of(values_span().begin(), values_span().end(),
                        [](T val) { return val == 1; });
   }
 
+  // 是否所有值为有限数
   bool IsFinite() const {
     if constexpr (IsFloatingType<T>()) {
       for (T val : values_span()) {
@@ -124,39 +149,51 @@ class DatapointPtr final {
     return true;
   }
 
+  // 判断某维是否非零
   bool HasNonzero(DimensionIndex dimension_index) const;
 
+  // 获取某维元素值
   T GetElement(DimensionIndex dimension_index) const;
 
+  // 获取 packed 二值元素
   T GetElementPacked(DimensionIndex dimension_index) const;
 
+  // 转为通用特征向量
   GenericFeatureVector ToGfv() const {
     GenericFeatureVector result;
     ToGfv(result);
     return result;
   }
 
+  // 填充到通用特征向量
   void ToGfv(GenericFeatureVector& result) const;
 
+  // 转为稀疏二值表示
   DatapointPtr<NoValue> ToSparseBinary() const {
     return DatapointPtr<NoValue>(indices_, nullptr, nonzero_entries_,
                                  dimensionality_);
   }
 
+  // 兼容旧接口
   ABSL_DEPRECATED("Prefer indices_span() over indices_slice()")
   ConstSpan<DimensionIndex> indices_slice() const { return indices_span(); }
   ABSL_DEPRECATED("Prefer values_span() over values_slice()")
   ConstSpan<T> values_slice() const { return values_span(); }
 
  private:
+  // 填充 GFV 索引和元信息
   void ToGfvIndicesAndMetadata(GenericFeatureVector* gfv) const;
 
+  // 索引指针
   const DimensionIndex* indices_ = nullptr;
 
+  // 值指针
   const T* values_ = nullptr;
 
+  // 非零元素个数
   DimensionIndex nonzero_entries_ = 0;
 
+  // 总维度
   DimensionIndex dimensionality_ = 0;
 };
 
@@ -246,6 +283,7 @@ inline DatapointPtr<uint8_t> MakeDatapointPtr(const HashedItem& item) {
 template <typename T>
 class Datapoint final {
  public:
+  // 构造函数：支持稀疏/稠密数据点对象
   Datapoint() : dimensionality_(0), normalization_(NONE) {}
 
   Datapoint(ConstSpan<DimensionIndex> indices, ConstSpan<T> values,
@@ -262,8 +300,10 @@ class Datapoint final {
         dimensionality_(dimensionality),
         normalization_(NONE) {}
 
+  // 从通用特征向量填充数据点
   Status FromGfv(const GenericFeatureVector& gfv);
 
+  // 获取/修改索引
   std::vector<DimensionIndex>* mutable_indices() { return &indices_; }
   MutableSpan<DimensionIndex> mutable_indices_span() {
     return MutableSpan<DimensionIndex>(indices_);
@@ -272,32 +312,41 @@ class Datapoint final {
   const std::vector<DimensionIndex>& indices() const { return indices_; }
   ConstSpan<DimensionIndex> indices_span() const { return indices_; }
 
+  // 获取/修改值
   std::vector<T>* mutable_values() { return &values_; }
   MutableSpan<T> mutable_values_span() { return MutableSpan<T>(values_); }
 
   const std::vector<T>& values() const { return values_; }
   ConstSpan<T> values_span() const { return values_; }
 
+  // 非零元素个数
   DimensionIndex nonzero_entries() const {
     return (IsDense()) ? values_.size() : indices_.size();
   }
 
+  // 总维度
   DimensionIndex dimensionality() const {
     return (dimensionality_ == 0) ? nonzero_entries() : dimensionality_;
   }
 
+  // 设置总维度
   void set_dimensionality(DimensionIndex new_value) {
     dimensionality_ = new_value;
   }
 
+  // 是否为稠密数据点
   bool IsDense() const { return indices_.empty() && !values_.empty(); }
 
+  // 是否为稀疏数据点
   bool IsSparse() const { return !IsDense(); }
 
+  // 是否为稀疏二值数据点
   bool IsSparseBinary() const { return values_.empty(); }
 
+  // 转为非二值数据点
   void MakeNotBinary();
 
+  // 转为数据点指针
   DatapointPtr<T> ToPtr() const {
     const DimensionIndex* indices_data =
         indices_.empty() ? nullptr : indices_.data();
@@ -306,14 +355,17 @@ class Datapoint final {
                             dimensionality());
   }
 
+  // 转为通用特征向量
   GenericFeatureVector ToGfv() const {
     GenericFeatureVector result;
     ToGfv(result);
     return result;
   }
 
+  // 填充到通用特征向量
   void ToGfv(GenericFeatureVector& result) const;
 
+  // 清空数据点
   void clear() {
     indices_.clear();
     values_.clear();
@@ -321,23 +373,30 @@ class Datapoint final {
     normalization_ = NONE;
   }
 
+  // 用零填充指定维度
   void ZeroFill(size_t dimensionality) {
     clear();
     values_.resize(dimensionality);
   }
 
+  // 获取/设置归一化类型
   Normalization normalization() const { return normalization_; }
 
   void set_normalization(Normalization val) { normalization_ = val; }
 
+  // 与另一个数据点交换内容
   void Swap(Datapoint<T>* rhs) { std::swap(*this, *rhs); }
 
+  // 索引是否有序
   bool IndicesSorted() const;
 
+  // 索引排序
   void SortIndices();
 
+  // 移除稀疏向量中的显式零
   void RemoveExplicitZeroesFromSparseVector();
 
+  // 兼容旧接口
   ABSL_DEPRECATED("Prefer mutable_indices_span() over mutable_indices_slice()")
   MutableSpan<DimensionIndex> mutable_indices_slice() {
     return mutable_indices_span();
@@ -350,14 +409,19 @@ class Datapoint final {
   ConstSpan<T> values_slice() const { return values_span(); }
 
  private:
+  // 从 GFV 填充数据点实现
   Status FromGfvImpl(const GenericFeatureVector& gfv);
 
+  // 索引数组
   std::vector<DimensionIndex> indices_;
 
+  // 值数组
   std::vector<T> values_;
 
+  // 总维度
   DimensionIndex dimensionality_;
 
+  // 归一化类型
   Normalization normalization_;
 };
 

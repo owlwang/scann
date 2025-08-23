@@ -23,17 +23,22 @@
 
 namespace research_scann {
 
+// 重排序辅助工厂类模板
+// 用于根据配置和距离度量创建 ReorderingInterface 派生对象
 template <typename T>
 class ReorderingHelperFactory {
  public:
+  // 工厂方法，根据配置、距离度量、数据集和工厂选项构建重排序接口对象
   static StatusOr<unique_ptr<const ReorderingInterface<T>>> Build(
       const ScannConfig& config,
       const shared_ptr<const DistanceMeasure>& reordering_dist,
       shared_ptr<TypedDataset<T>> dataset, SingleMachineFactoryOptions* opts);
 };
 
+// 支持所有主流数值类型的工厂实例化宏
 SCANN_INSTANTIATE_TYPED_CLASS(extern, ReorderingHelperFactory)
 
+// research_scann 命名空间结束
 }  // namespace research_scann
 
 #endif

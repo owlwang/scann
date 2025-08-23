@@ -43,6 +43,8 @@
 
 namespace research_scann {
 
+// 释放 docid 集合，返回原有 docids 并重置为空 docids
+// 该方法用于将当前数据集的 docid 集合释放出来，返回原有 docids，并将 docids_ 重置为同样大小的空集合。
 shared_ptr<DocidCollectionInterface> Dataset::ReleaseDocids() {
   auto result = std::move(docids_);
   docids_ = make_unique<VariableLengthDocidCollection>(
@@ -50,6 +52,8 @@ shared_ptr<DocidCollectionInterface> Dataset::ReleaseDocids() {
   return result;
 }
 
+// 按归一化类型进行数据集归一化
+// 根据指定的归一化类型（如 L2 归一化、零均值单位方差等）对数据集进行归一化处理。
 Status Dataset::NormalizeByTag(Normalization tag) {
   if (tag == normalization()) return OkStatus();
   switch (tag) {
@@ -64,38 +68,47 @@ Status Dataset::NormalizeByTag(Normalization tag) {
 }
 
 template <typename T>
+// 追加数据点（无 docid，自动生成）
+// 向数据集追加一个数据点，docid 自动生成为当前 size。
 Status TypedDataset<T>::Append(const DatapointPtr<T>& dptr) {
   return Append(dptr, absl::StrCat(this->size()));
 }
 
 template <typename T>
+// 支持 GFV 格式追加，docid 自动生成。
 Status TypedDataset<T>::Append(const GenericFeatureVector& gfv) {
   return Append(gfv, absl::StrCat(this->size()));
 }
 
 template <typename T>
+// 追加数据点，失败直接抛异常（docid 自动生成）。
 void TypedDataset<T>::AppendOrDie(const DatapointPtr<T>& dptr) {
   AppendOrDie(dptr, absl::StrCat(this->size()));
 }
 
 template <typename T>
+// 追加 GFV 数据点，失败直接抛异常（docid 自动生成）。
 void TypedDataset<T>::AppendOrDie(const GenericFeatureVector& gfv) {
   AppendOrDie(gfv, absl::StrCat(this->size()));
 }
 
 template <typename T>
+// 追加数据点，失败直接抛异常（指定 docid）。
 void TypedDataset<T>::AppendOrDie(const DatapointPtr<T>& dptr,
                                   string_view docid) {
   CHECK_OK(this->Append(dptr, docid));
 }
 
 template <typename T>
+// 追加 GFV 数据点，失败直接抛异常（指定 docid）。
 void TypedDataset<T>::AppendOrDie(const GenericFeatureVector& gfv,
                                   string_view docid) {
   CHECK_OK(this->Append(gfv, docid));
 }
 
 template <typename T>
+// 按维度计算均值（支持稀疏/稠密/二值数据集）
+// 遍历所有数据点，统计每个维度的均值，支持稀疏/稠密/二值数据集。
 Status TypedDataset<T>::MeanByDimension(Datapoint<double>* result) const {
   const size_t size = this->size();
   if (size <= 0) {
@@ -142,6 +155,8 @@ Status TypedDataset<T>::MeanByDimension(Datapoint<double>* result) const {
 }
 
 template <typename T>
+// 按维度计算子集均值（支持稀疏/稠密/二值数据集）
+// 只统计 subset 指定的数据点，计算每个维度的均值。
 Status TypedDataset<T>::MeanByDimension(ConstSpan<DatapointIndex> subset,
                                         Datapoint<double>* result) const {
   if (subset.empty()) {
@@ -187,6 +202,8 @@ Status TypedDataset<T>::MeanByDimension(ConstSpan<DatapointIndex> subset,
 }
 
 template <typename T>
+// 按维度计算均值和方差（全量数据）
+// 计算整个数据集每个维度的均值和方差，结果存入 means/variances。
 void TypedDataset<T>::MeanVarianceByDimension(
     Datapoint<double>* means, Datapoint<double>* variances) const {
   CHECK(!this->is_binary()) << "Not implemented for binary datasets.";
@@ -200,9 +217,11 @@ void TypedDataset<T>::MeanVarianceByDimension(
 }
 
 template <typename T>
+// 按维度计算子集均值和方差
+// 只统计 subset 指定的数据点，计算每个维度的均值和方差。
 void TypedDataset<T>::MeanVarianceByDimension(
-    ConstSpan<DatapointIndex> subset, Datapoint<double>* means,
-    Datapoint<double>* variances) const {
+  ConstSpan<DatapointIndex> subset, Datapoint<double>* means,
+  Datapoint<double>* variances) const {
   DCHECK(variances);
   CHECK(!this->is_binary()) << "Not implemented for binary datasets.";
   CHECK_GT(subset.size(), 0)
@@ -247,6 +266,8 @@ void TypedDataset<T>::MeanVarianceByDimension(
 }
 
 template <typename T>
+// 对数据集进行单位 L2 归一化
+// 遍历所有数据点，将每个点归一化为单位 L2 范数。
 Status TypedDataset<T>::NormalizeUnitL2() {
   if (this->is_binary() || IsIntegerType<T>()) {
     return FailedPreconditionError(
@@ -271,6 +292,8 @@ Status TypedDataset<T>::NormalizeUnitL2() {
 }
 
 template <typename T>
+// 对数据集进行零均值单位方差归一化
+// 遍历所有数据点，将每个点减去均值并除以标准差。
 Status TypedDataset<T>::NormalizeZeroMeanUnitVariance() {
   if (this->is_binary() || IsIntegerType<T>()) {
     return FailedPreconditionError(
@@ -329,6 +352,7 @@ inline void ToFloatAlwaysCopy(const DatapointPtr<float>& dptr,
 }  // namespace
 
 template <typename T>
+// 获取指定索引的数据点并转换为 double 类型
 void TypedDataset<T>::GetDatapoint(size_t index,
                                    Datapoint<double>* result) const {
   DCHECK(result);
@@ -339,6 +363,7 @@ void TypedDataset<T>::GetDatapoint(size_t index,
 }
 
 template <typename T>
+// 获取指定索引的数据点并转换为 float 类型
 void TypedDataset<T>::GetDatapoint(size_t index,
                                    Datapoint<float>* result) const {
   DCHECK(result);
@@ -349,6 +374,7 @@ void TypedDataset<T>::GetDatapoint(size_t index,
 }
 
 template <typename T>
+// 设置稠密数据集的维度（仅允许空数据集重设）
 void DenseDataset<T>::set_dimensionality(DimensionIndex dimensionality) {
   if (this->empty()) {
     this->set_dimensionality_no_checks(dimensionality);
@@ -360,23 +386,27 @@ void DenseDataset<T>::set_dimensionality(DimensionIndex dimensionality) {
 }
 
 template <typename T>
+// 获取稠密数据集的活跃维度数（即总维度）
 DimensionIndex DenseDataset<T>::NumActiveDimensions() const {
   return this->dimensionality();
 }
 
 template <typename T>
+// 收缩稠密数据集内存到实际大小
 void DenseDataset<T>::ShrinkToFit() {
   this->docids()->ShrinkToFit();
   data_.shrink_to_fit();
 }
 
 template <typename T>
+// 设置稠密数据集为二值模式，并调整 stride
 void DenseDataset<T>::set_is_binary(bool val) {
   this->Dataset::set_is_binary(val);
   SetStride();
 }
 
 template <typename T>
+// 计算稠密数据集每个数据点的 stride（存储跨度），支持二值/半字节/普通模式
 void DenseDataset<T>::SetStride() {
   if (this->packing_strategy() == HashedItem::BINARY) {
     stride_ = this->dimensionality() / 8 + (this->dimensionality() % 8 > 0);
@@ -388,18 +418,21 @@ void DenseDataset<T>::SetStride() {
 }
 
 template <typename T>
+// 获取稠密数据点并转换为 double 类型
 void DenseDataset<T>::GetDenseDatapoint(size_t index,
                                         Datapoint<double>* result) const {
   this->GetDatapoint(index, result);
 }
 
 template <typename T>
+// 获取稠密数据点并转换为 float 类型
 void DenseDataset<T>::GetDenseDatapoint(size_t index,
                                         Datapoint<float>* result) const {
   this->GetDatapoint(index, result);
 }
 
 template <typename T>
+// 计算两个稠密数据点之间的距离（使用指定距离度量）
 double DenseDataset<T>::GetDistance(const DistanceMeasure& dist,
                                     size_t vec1_index,
                                     size_t vec2_index) const {
@@ -407,6 +440,8 @@ double DenseDataset<T>::GetDistance(const DistanceMeasure& dist,
 }
 
 template <typename T>
+// 追加稠密数据点，支持二值/归一化/维度校验
+// 追加一个稠密数据点到数据集，自动处理二值、归一化、维度一致性等。
 Status DenseDataset<T>::Append(const DatapointPtr<T>& dptr, string_view docid) {
   if (!dptr.IsDense()) {
     if (dptr.IsSparseOrigin()) {
@@ -464,6 +499,7 @@ Status DenseDataset<T>::Append(const DatapointPtr<T>& dptr, string_view docid) {
 }
 
 template <typename T>
+// 追加 GFV 格式数据点到稠密数据集
 Status DenseDataset<T>::Append(const GenericFeatureVector& gfv,
                                string_view docid) {
   Datapoint<T> dp;
@@ -474,25 +510,27 @@ Status DenseDataset<T>::Append(const GenericFeatureVector& gfv,
 }
 
 template <typename T>
+// 构造函数：用已有数据和 docids 构造稠密数据集
 DenseDataset<T>::DenseDataset(vector<T> datapoint_vec,
                               unique_ptr<DocidCollectionInterface> docids)
     : TypedDataset<T>(std::move(docids)), data_(std::move(datapoint_vec)) {
   if (!data_.empty()) {
     stride_ = data_.size() / this->docids()->size();
-
     this->set_dimensionality_no_checks(stride_);
   }
   DCHECK_EQ(this->docids()->size() * stride_, data_.size());
 }
 
 template <typename T>
+// 构造函数：用已有数据和数据点数量构造稠密数据集，docids 自动生成
 DenseDataset<T>::DenseDataset(vector<T>&& datapoint_vec, size_t num_dp)
-    : DenseDataset<T>(
-          std::move(datapoint_vec),
-          make_unique<VariableLengthDocidCollection>(
-              VariableLengthDocidCollection::CreateWithEmptyDocids(num_dp))) {}
+  : DenseDataset<T>(
+      std::move(datapoint_vec),
+      make_unique<VariableLengthDocidCollection>(
+        VariableLengthDocidCollection::CreateWithEmptyDocids(num_dp))) {}
 
 template <typename T>
+// 预分配稠密数据集空间
 void DenseDataset<T>::Reserve(size_t n) {
   if (mutator_) {
     mutator_->Reserve(n);
@@ -502,11 +540,13 @@ void DenseDataset<T>::Reserve(size_t n) {
 }
 
 template <typename T>
+// 实际分配稠密数据存储空间
 void DenseDataset<T>::ReserveImpl(size_t n) {
   data_.reserve(n * stride_);
 }
 
 template <typename T>
+// 调整稠密数据集大小（仅支持空 docids）
 void DenseDataset<T>::Resize(size_t n) {
   CHECK_EQ(this->docids()->capacity(), 0)
       << "Resize only works for datasets with empty docids.";
@@ -518,11 +558,13 @@ void DenseDataset<T>::Resize(size_t n) {
 }
 
 template <typename T>
+// 清空稠密数据集
 void DenseDataset<T>::clear() {
   *this = DenseDataset<T>();
 }
 
 template <typename T>
+// 释放 docids 并重置 mutator
 shared_ptr<DocidCollectionInterface> DenseDataset<T>::ReleaseDocids() {
   auto result = Dataset::ReleaseDocids();
   if (mutator_) {
@@ -533,11 +575,13 @@ shared_ptr<DocidCollectionInterface> DenseDataset<T>::ReleaseDocids() {
 }
 
 template <typename T>
+// 计算稠密数据集占用内存（不含 docids）
 size_t DenseDataset<T>::MemoryUsageExcludingDocids() const {
   return sizeof(*this) + sizeof(T) * data_.capacity() - sizeof(*this->docids());
 }
 
 template <typename T>
+// 获取/创建稠密数据集的 Mutator
 StatusOr<typename TypedDataset<T>::Mutator*> DenseDataset<T>::GetMutator()
     const {
   if (!mutator_) {
@@ -548,6 +592,7 @@ StatusOr<typename TypedDataset<T>::Mutator*> DenseDataset<T>::GetMutator()
 }
 
 template <typename T>
+// 设置稀疏数据集的维度（仅允许空数据集重设）
 void SparseDataset<T>::set_dimensionality(DimensionIndex dimensionality) {
   if (this->empty()) {
     this->set_dimensionality_no_checks(dimensionality);
@@ -558,6 +603,7 @@ void SparseDataset<T>::set_dimensionality(DimensionIndex dimensionality) {
 }
 
 template <typename T>
+// 获取稀疏数据点并转换为稠密格式（支持二值/普通）
 template <typename OutT>
 void SparseDataset<T>::GetDenseDatapointImpl(size_t index,
                                              Datapoint<OutT>* result) const {
@@ -579,18 +625,21 @@ void SparseDataset<T>::GetDenseDatapointImpl(size_t index,
 }
 
 template <typename T>
+// 获取稀疏数据点并转换为 double 类型稠密格式
 void SparseDataset<T>::GetDenseDatapoint(size_t index,
                                          Datapoint<double>* result) const {
   GetDenseDatapointImpl(index, result);
 }
 
 template <typename T>
+// 获取稀疏数据点并转换为 float 类型稠密格式
 void SparseDataset<T>::GetDenseDatapoint(size_t index,
                                          Datapoint<float>* result) const {
   GetDenseDatapointImpl(index, result);
 }
 
 template <typename T>
+// 获取稀疏数据集的活跃维度数（统计所有出现过的维度）
 DimensionIndex SparseDataset<T>::NumActiveDimensions() const {
   absl::flat_hash_set<DimensionIndex> is_active;
   for (size_t i = 0; i < this->size(); ++i) {
@@ -599,11 +648,11 @@ DimensionIndex SparseDataset<T>::NumActiveDimensions() const {
       is_active.insert(dptr.indices()[j]);
     }
   }
-
   return is_active.size();
 }
 
 template <typename T>
+// 计算两个稀疏数据点之间的距离（使用指定距离度量）
 double SparseDataset<T>::GetDistance(const DistanceMeasure& dist,
                                      size_t vec1_index,
                                      size_t vec2_index) const {
@@ -611,6 +660,7 @@ double SparseDataset<T>::GetDistance(const DistanceMeasure& dist,
 }
 
 template <typename T>
+// 追加 GFV 格式数据点到稀疏数据集，异常回滚
 Status SparseDataset<T>::Append(const GenericFeatureVector& gfv,
                                 string_view docid) {
   const auto old_dimensionality = this->dimensionality();
@@ -629,6 +679,7 @@ Status SparseDataset<T>::Append(const GenericFeatureVector& gfv,
 }
 
 template <typename T>
+// 实际追加 GFV 到稀疏数据集，校验稀疏性、维度、二值等
 Status SparseDataset<T>::AppendImpl(const GenericFeatureVector& gfv,
                                     string_view docid) {
   SCANN_ASSIGN_OR_RETURN(bool is_sparse, IsGfvSparse(gfv));
@@ -674,6 +725,7 @@ Status SparseDataset<T>::AppendImpl(const GenericFeatureVector& gfv,
 }
 
 template <typename T>
+// 追加 DatapointPtr 到稀疏数据集，异常回滚
 Status SparseDataset<T>::Append(const DatapointPtr<T>& dptr,
                                 string_view docid) {
   const auto old_dimensionality = this->dimensionality();
@@ -689,6 +741,7 @@ Status SparseDataset<T>::Append(const DatapointPtr<T>& dptr,
 }
 
 template <typename T>
+// 实际追加 DatapointPtr 到稀疏数据集，校验稀疏性、维度、二值等
 Status SparseDataset<T>::AppendImpl(const DatapointPtr<T>& dptr,
                                     string_view docid) {
   if (!dptr.IsSparse()) {
@@ -741,6 +794,7 @@ Status SparseDataset<T>::AppendImpl(const DatapointPtr<T>& dptr,
 }
 
 template <typename T>
+// 将当前稀疏数据集转换为 double 类型（不支持二值）
 void SparseDataset<T>::ConvertType(SparseDataset<double>* target) {
   CHECK(!this->is_binary()) << "Not implemented for binary datasets.";
   DCHECK(target);
@@ -756,11 +810,13 @@ void SparseDataset<T>::ConvertType(SparseDataset<double>* target) {
 }
 
 template <typename T>
+// 预分配稀疏数据集空间（点数）
 void SparseDataset<T>::Reserve(size_t n_points) {
   repr_.Reserve(n_points);
 }
 
 template <typename T>
+// 预分配稀疏数据集空间（点数和条目数），二值和普通分别处理
 void SparseDataset<T>::Reserve(size_t n_points, size_t n_entries) {
   if (this->is_binary()) {
     repr_.ReserveForBinaryData(n_points, n_entries);
@@ -770,16 +826,19 @@ void SparseDataset<T>::Reserve(size_t n_points, size_t n_entries) {
 }
 
 template <typename T>
+// 清空稀疏数据集
 void SparseDataset<T>::clear() {
   *this = SparseDataset<T>();
 }
 template <typename T>
+// 计算稀疏数据集占用内存（不含 docids）
 size_t SparseDataset<T>::MemoryUsageExcludingDocids() const {
   return sizeof(*this) + repr_.MemoryUsage() - sizeof(repr_) -
          sizeof(*this->docids());
 }
 
 template <typename T>
+// 收缩稀疏数据集内存到实际大小
 void SparseDataset<T>::ShrinkToFit() {
   repr_.ShrinkToFit();
   this->docids()->ShrinkToFit();

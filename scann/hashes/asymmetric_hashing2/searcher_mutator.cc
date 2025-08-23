@@ -31,8 +31,9 @@
 namespace research_scann {
 namespace asymmetric_hashing2 {
 
+// AH 预计算变异工件，保存哈希后的数据点
 class AHPrecomputedMutationArtifacts
-    : public UntypedSingleMachineSearcherBase::PrecomputedMutationArtifacts {
+  : public UntypedSingleMachineSearcherBase::PrecomputedMutationArtifacts {
  public:
   explicit AHPrecomputedMutationArtifacts(Datapoint<uint8_t> hashed)
       : hashed_(hashed) {}
@@ -43,6 +44,7 @@ class AHPrecomputedMutationArtifacts
   Datapoint<uint8_t> hashed_;
 };
 
+// 创建 Mutator 实例，初始化索引器和打包数据集指针
 template <typename T>
 StatusOr<unique_ptr<typename Searcher<T>::Mutator>>
 Searcher<T>::Mutator::Create(Searcher<T>* searcher) {
@@ -64,11 +66,13 @@ Searcher<T>::Mutator::Create(Searcher<T>* searcher) {
   return std::move(result);
 }
 
+// 预分配空间，调用基类 Reserve
 template <typename T>
 void Searcher<T>::Mutator::Reserve(size_t size) {
   this->ReserveInBase(size);
 }
 
+// 计算预计算变异工件，哈希数据点
 template <typename T>
 unique_ptr<UntypedSingleMachineSearcherBase::PrecomputedMutationArtifacts>
 Searcher<T>::Mutator::ComputePrecomputedMutationArtifacts(
@@ -79,6 +83,7 @@ Searcher<T>::Mutator::ComputePrecomputedMutationArtifacts(
   return make_unique<AHPrecomputedMutationArtifacts>(std::move(hashed));
 }
 
+// 单参数版本，直接调用双参数哈希
 template <typename T>
 unique_ptr<UntypedSingleMachineSearcherBase::PrecomputedMutationArtifacts>
 Searcher<T>::Mutator::ComputePrecomputedMutationArtifacts(
@@ -86,6 +91,7 @@ Searcher<T>::Mutator::ComputePrecomputedMutationArtifacts(
   return ComputePrecomputedMutationArtifacts(dptr, dptr);
 }
 
+// 若为打包量化方案则解包数据点，否则原样返回
 template <typename T>
 Datapoint<uint8_t> Searcher<T>::Mutator::EnsureDatapointUnpacked(
     const Datapoint<uint8_t>& dp) {
@@ -98,12 +104,14 @@ Datapoint<uint8_t> Searcher<T>::Mutator::EnsureDatapointUnpacked(
   return dp;
 }
 
+// 获取数据点接口，未实现
 template <typename T>
 StatusOr<Datapoint<T>> Searcher<T>::Mutator::GetDatapoint(
     DatapointIndex i) const {
   return UnimplementedError("GetDatapoint is not implemented.");
 }
 
+// 添加数据点，支持预计算哈希和 LUT16 打包，维护 packed_dataset
 template <typename T>
 StatusOr<DatapointIndex> Searcher<T>::Mutator::AddDatapoint(
     const DatapointPtr<T>& dptr, string_view docid, const MutationOptions& mo) {
@@ -153,6 +161,7 @@ StatusOr<DatapointIndex> Searcher<T>::Mutator::AddDatapoint(
   return result;
 }
 
+// 移除数据点，维护 packed_dataset 并处理索引重命名
 template <typename T>
 Status Searcher<T>::Mutator::RemoveDatapoint(DatapointIndex index) {
   SCANN_RETURN_IF_ERROR(this->ValidateForRemove(index));
@@ -183,6 +192,7 @@ Status Searcher<T>::Mutator::RemoveDatapoint(DatapointIndex index) {
   return OkStatus();
 }
 
+// 按 docid 移除数据点
 template <typename T>
 Status Searcher<T>::Mutator::RemoveDatapoint(string_view docid) {
   DatapointIndex index;
@@ -192,6 +202,7 @@ Status Searcher<T>::Mutator::RemoveDatapoint(string_view docid) {
   return RemoveDatapoint(index);
 }
 
+// 按 docid 更新数据点
 template <typename T>
 StatusOr<DatapointIndex> Searcher<T>::Mutator::UpdateDatapoint(
     const DatapointPtr<T>& dptr, string_view docid, const MutationOptions& mo) {
@@ -202,6 +213,7 @@ StatusOr<DatapointIndex> Searcher<T>::Mutator::UpdateDatapoint(
   return UpdateDatapoint(dptr, index, mo);
 }
 
+// 按索引更新数据点，支持预计算哈希和 packed_dataset 更新
 template <typename T>
 StatusOr<DatapointIndex> Searcher<T>::Mutator::UpdateDatapoint(
     const DatapointPtr<T>& dptr, DatapointIndex index,
@@ -234,6 +246,7 @@ StatusOr<DatapointIndex> Searcher<T>::Mutator::UpdateDatapoint(
   return index;
 }
 
+// 哈希数据点，支持噪声整形
 template <typename T>
 Status Searcher<T>::Mutator::Hash(const DatapointPtr<T>& maybe_residual,
                                   const DatapointPtr<T>& original,
@@ -249,7 +262,10 @@ Status Searcher<T>::Mutator::Hash(const DatapointPtr<T>& maybe_residual,
   }
 }
 
+// Searcher 模板类显式实例化声明
 SCANN_INSTANTIATE_TYPED_CLASS(, Searcher);
 
+// asymmetric_hashing2 命名空间结束
 }  // namespace asymmetric_hashing2
+// research_scann 命名空间结束
 }  // namespace research_scann

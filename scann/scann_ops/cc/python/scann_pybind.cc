@@ -20,25 +20,34 @@
 #include "pybind11/stl.h"
 #include "scann/scann_ops/cc/scann_npy.h"
 
+// 定义 pybind11 模块 scann_pybind
 PYBIND11_MODULE(scann_pybind, py_module) {
+  // 设置模块文档
   py_module.doc() = "pybind11 wrapper for ScaNN";
+  // 绑定 ScannNumpy 类及其构造与方法
   pybind11::class_<research_scann::ScannNumpy>(py_module, "ScannNumpy")
+      // 支持两种构造方式：通过文件名或通过 numpy 数组
       .def(pybind11::init<const std::string&, const std::string&>())
       .def(pybind11::init<const research_scann::np_row_major_arr<float>&,
                           const std::string&, int>())
+      // 搜索相关方法
       .def("search", &research_scann::ScannNumpy::Search)
       .def("search_batched", &research_scann::ScannNumpy::SearchBatched)
 
+      // 数据增删改相关方法
       .def("upsert", &research_scann::ScannNumpy::Upsert)
       .def("delete", &research_scann::ScannNumpy::Delete)
       .def("rebalance", &research_scann::ScannNumpy::Rebalance)
+      // 自动参数建议静态方法
       .def_static("suggest_autopilot",
                   &research_scann::ScannNumpy::SuggestAutopilot)
+      // 资源管理与配置相关方法
       .def("size", &research_scann::ScannNumpy::Size)
       .def("reserve", &research_scann::ScannNumpy::Reserve)
       .def("set_num_threads", &research_scann::ScannNumpy::SetNumThreads)
       .def("config", &research_scann::ScannNumpy::Config)
       .def("serialize", &research_scann::ScannNumpy::Serialize)
+      // 健康状态相关方法
       .def("get_health_stats", &research_scann::ScannNumpy::GetHealthStats)
       .def("initialize_health_stats",
            &research_scann::ScannNumpy::InitializeHealthStats);

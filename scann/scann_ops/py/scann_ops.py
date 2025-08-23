@@ -31,14 +31,17 @@ scann_to_tensors = _scann_ops_so.scann_scann_to_tensors
 tensors_to_scann = _scann_ops_so.scann_tensors_to_scann
 
 
+## 从模块恢复ScaNN搜索器
 def searcher_from_module(module, db=None):
   del db  # Unused.
   return ScannSearcher(module.recreate_handle())
 
 
+## ScaNN状态类，封装搜索器资产用于对象化checkpoint
 class ScannState(tf.Module):
   """Class that wraps ScaNN searcher assets for object-based checkpointing."""
 
+  # 初始化状态，保存所有搜索器相关变量
   def __init__(self, tensors):
     super(ScannState, self).__init__()
     scann_config, serialized_partitioner, datapoint_to_token, ah_codebook, hashed_dataset, int8_dataset, int8_multipliers, dp_norms, dataset = tensors
@@ -58,6 +61,7 @@ class ScannState(tf.Module):
     self.dp_norms = make_var(dp_norms)
     self.dataset = make_var(dataset)
 
+  # 重新创建搜索器句柄
   @tf.function(input_signature=[])
   def recreate_handle(self):
     """Creates resource handle to searcher from ScaNN searcher assets."""
@@ -68,12 +72,15 @@ class ScannState(tf.Module):
                             self.int8_multipliers, self.dp_norms)
 
 
+## ScaNN搜索器包装类，持有资源句柄
 class ScannSearcher(object):
   """Wrapper class that holds the ScaNN searcher resource handle."""
 
+  # 初始化包装类，保存搜索器句柄
   def __init__(self, searcher_handle):
     self.searcher_handle = searcher_handle
 
+  # 单条查询接口
   def search(self,
              q,
              final_num_neighbors=None,
@@ -84,6 +91,7 @@ class ScannSearcher(object):
     leaves = -1 if leaves_to_search is None else leaves_to_search
     return scann_search(self.searcher_handle, q, final_nn, pre_nn, leaves)
 
+  # 批量查询接口
   def search_batched(self,
                      q,
                      final_num_neighbors=None,
@@ -95,6 +103,7 @@ class ScannSearcher(object):
     return scann_search_batched(self.searcher_handle, q, final_nn, pre_nn,
                                 leaves, False)
 
+  # 并行批量查询接口
   def search_batched_parallel(self,
                               q,
                               final_num_neighbors=None,
@@ -106,10 +115,12 @@ class ScannSearcher(object):
     return scann_search_batched(self.searcher_handle, q, final_nn, pre_nn,
                                 leaves, True)
 
+  # 序列化为ScannState模块
   def serialize_to_module(self):
     return ScannState(scann_to_tensors(self.searcher_handle))
 
 
+## 构建ScannBuilder，build后返回TF ScaNN搜索器
 def builder(db, num_neighbors, distance_measure):
   """Creates a ScannBuilder that returns a TensorFlow ScaNN searcher on build().
 
@@ -134,6 +145,7 @@ def builder(db, num_neighbors, distance_measure):
       db, num_neighbors, distance_measure).set_builder_lambda(builder_lambda)
 
 
+## 创建ScaNN搜索器，给定数据集和配置
 def create_searcher(db,
                     scann_config,
                     training_threads=0,

@@ -23,6 +23,7 @@
 
 namespace research_scann {
 
+// 为absl::Status添加注释信息，合并原消息与新消息
 absl::Status AnnotateStatus(const absl::Status& s, absl::string_view msg) {
   if (s.ok() || msg.empty()) return s;
 
@@ -35,6 +36,7 @@ absl::Status AnnotateStatus(const absl::Status& s, absl::string_view msg) {
   return absl::Status(s.code(), new_msg);
 }
 
+// 构造RetCheck失败的StatusBuilder，类型为InternalError
 StatusBuilder RetCheckFail(absl::string_view msg) {
   return InternalErrorBuilder() << msg;
 }

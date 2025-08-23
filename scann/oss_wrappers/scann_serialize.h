@@ -23,16 +23,27 @@
 namespace research_scann {
 namespace strings {
 
+// uint32转为序列化key字符串
 std::string Uint32ToKey(uint32_t u32);
+// int32转为序列化key字符串
 std::string Int32ToKey(int32_t i32);
+// uint64转为序列化key字符串
 std::string Uint64ToKey(uint64_t u64);
+// uint32转key字符串，处理字节序
 void KeyFromUint32(uint32_t u32, std::string* key);
+// uint64转key字符串，处理字节序
 void KeyFromUint64(uint64_t u64, std::string* key);
+// key字符串还原为float
 float KeyToFloat(absl::string_view key);
+// key字符串还原为uint32
 uint32_t KeyToUint32(absl::string_view key);
+// key字符串还原为int32
 int32_t KeyToInt32(absl::string_view key);
+// key字符串还原为uint64
 uint64_t KeyToUint64(absl::string_view key);
+// float转key字符串，先转IEEE754再转uint32
 void KeyFromFloat(float x, std::string* key);
+// float转为序列化key字符串
 std::string FloatToKey(float x);
 
 }  // namespace strings

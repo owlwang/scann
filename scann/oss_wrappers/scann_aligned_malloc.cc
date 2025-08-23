@@ -16,15 +16,19 @@
 
 namespace research_scann {
 
+// C11/现代C++/ISOC11: 使用标准aligned_alloc实现内存对齐分配
 #if (defined(__STD_C_VERSION__) && (__STD_C_VERSION__ >= 201112L)) || \
     (__cplusplus >= 201703L) || defined(_ISOC11_SOURCE)
 void *aligned_malloc(size_t size, size_t minimum_alignment) {
+  // 向上取整保证分配size为alignment的整数倍
   size = (size + minimum_alignment - 1) / minimum_alignment * minimum_alignment;
   return aligned_alloc(minimum_alignment, size);
 }
 
+// 标准释放
 void aligned_free(void *aligned_memory) { free(aligned_memory); }
 
+// MSVC: 使用平台特定的对齐分配与释放
 #elif defined(_MSC_VER)
 #include <malloc.h>
 
@@ -34,6 +38,7 @@ void *aligned_malloc(size_t size, size_t minimum_alignment) {
 
 void aligned_free(void *aligned_memory) { _aligned_free(aligned_memory); }
 
+// 其他平台：可扩展实现
 #else
 #endif
 
